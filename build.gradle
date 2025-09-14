@@ -23,6 +23,10 @@ dependencies {
     implementation "org.slf4j:slf4j-api:$slf4jVersion"
     implementation "io.vertx:vertx-core:$vertxVersion"
     implementation "io.vertx:vertx-rx-java3:$vertxVersion"
+    implementation "io.vertx:vertx-web:$vertxVersion"
+    implementation "io.vertx:vertx-web-client:$vertxVersion"
+    implementation "io.vertx:vertx-config:$vertxVersion"
+    implementation "io.vertx:vertx-config-yaml:$vertxVersion"
 
     // testing
     testImplementation "org.assertj:assertj-core:$assertjVersion"
