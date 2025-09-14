@@ -1,0 +1,74 @@
+configuration:
+  name: default
+  shutdownHook: disable
+  properties:
+    property:
+      - name: app-name
+        value: jsonrpc-ethereum-proxy
+
+      # console plain appender config
+      - name: appender.console-plain.enabled
+        value: ${env:LOG_APPENDER_CONSOLE_PLAIN_ENABLED:-true}
+
+      # access log appender config
+      - name: appender.access-log.enabled
+        value: ${env:LOG_APPENDER_ACCESS_LOG_ENABLED:-false}
+      - name: appender.access-log.directory
+        value: ${env:LOG_APPENDER_ACCESS_LOG_DIRECTORY:-log/access}
+      - name: appender.access-log.file-name
+        value: ${env:LOG_APPENDER_ACCESS_LOG_NAME:-${app-name}.access.log}
+      - name: appender.access-log.file-name-pattern
+        value: ${env:LOG_APPENDER_ACCESS_LOG_FILE_NAME_PATTERN:-${app-name}.access.%d.%i.log.gz}
+      - name: appender.access-log.max-file-size
+        value: ${env:LOG_APPENDER_ACCESS_LOG_MAX_FILE_SIZE:-50MB}
+      - name: appender.access-log.max-age
+        value: ${env:LOG_APPENDER_ACCESS_LOG_MAX_AGE:-P14D}
+
+      # log levels
+      - name: logger.root.level
+        value: ${env:LOG_LEVEL_ROOT:-debug}
+      - name: logger.access-log.level
+        value: ${env:LOG_LEVEL_ACCESS_LOG:-debug}
+      - name: logger.vertx.level
+        value: ${env:LOG_LEVEL_VERTX:-debug}
+  appenders:
+    console:
+      name: console-plain-true
+      target: SYSTEM_OUT
+      patternLayout:
+        pattern: "%style{%d{ISO8601}}{normal,white} %highlight{%-5level} [%X{OPERATION_ID}] [%style{%-19.19t}{bright,blue}] %style{%-36.36logger{1.}}{bright,yellow}: %msg%n%throwable"
+    RollingFile:
+      - name: access-log-true
+        fileName: ${appender.access-log.directory}/${appender.access-log.file-name}
+        filePattern: ${appender.access-log.directory}/${appender.access-log.file-name-pattern}
+        patternLayout:
+          pattern: "%d{ISO8601} [%X{OPERATION_ID}] - %msg%n%throwable"
+        DefaultRolloverStrategy:
+          fileIndex: nomax
+          delete:
+            basePath: ${appender.access-log.directory}
+            ifLastModified:
+              age: ${appender.access-log.max-age}
+        Policies:
+          CronTriggeringPolicy:
+            schedule: "0 0 0 * * ?"
+          SizeBasedTriggeringPolicy:
+            size: ${appender.access-log.max-file-size}
+    null:
+      - name: console-plain-false
+      - name: access-log-false
+  loggers:
+    root:
+      level: ${logger.root.level}
+      appenderRef:
+        - ref: console-plain-${appender.console-plain.enabled}
+    logger:
+      - name: io.vertx
+        level: ${logger.vertx.level}
+
+      # access log
+      - name: ACCESS_LOG
+        level: ${logger.access-log.level}
+        additivity: false
+        appenderRef:
+          - ref: access-log-${appender.access-log.enabled}

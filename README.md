@@ -59,11 +59,23 @@ for this kind of use case - speed of in-memory storage with persistence and is
 provided as-a-service by many cloud providers. And it has `INCR` command which
 is perfect for counting requests.
 
+Two technologies similar to Redis that I know about are Memcached and Aerospike.
+Memcached is not persistent, and we can't group keys there to store multiple rpc
+methods counters under the same key for easy retrieval. Aerospike is a more
+advanced DB with much more features and will be an overkill here.
+
 Using a classic database here would be a bad idea because:
 
 - performance is critical, and databases are far slower than in-memory stores
 - data access patterns are very simple and don't require complex queries, access
   by key is sufficient
+
+NOTE: potentially we could use Vertx's shared data structures for this. But they
+are implemented using distributed memory grid (hazelcast, ignite or infinispan)
+under the hood. It will require substantial effort to make it persistent and
+correct without depending on the number of instances. And most likely, if we use
+it via Vertx's interface, the result number of network calls may be even higher
+than with Redis.
 
 ## Caching
 
@@ -78,9 +90,9 @@ timeframe ends.
 ## Async queued processing
 
 Another performance optimization is to not wait for certain operations to finish
-before finishing handling the request. In other words, operations that should
-be performed but their result is not needed for the request can be 
-processed asynchronously (optionally enqueued and processed in batches).
+before finishing handling the request. In other words, operations that should be
+performed but their result is not needed for the request can be processed
+asynchronously (optionally enqueued and processed in batches).
 
 First such operation that I see is tracking method calls for billing. We don't
 need to wait for the storage to be updated before forwarding the request to the
@@ -89,3 +101,34 @@ to reduce the network congestion, we can accumulate multiple operations and
 process them in a batch.
 
 Similarly, access logging can be done in the same fashion.
+
+## Configuration
+
+There's a chicken-and-egg dependency between Vertx instance and ConfigRetriever:
+some options of Vertx instance itself may need to be configurable. For
+simplicity, I'll assume that Vertx instance does not need any external
+configuration.
+
+But for a more complex app, we'd need to manually parse/load some config(s)
+first, then create Vertx instance out of that config, and only after that create
+ConfigRetriever to load the rest of the config. In such case I'd rather use a
+compile-time DI framework with negligible performance overhead rather than
+manually handle config options, plus the benefits of DI itself. I've already
+experimented and successfully used MicronautDI with Vertx for this purpose. You
+can see more details of our efforts in my colleague's blog post:
+https://taraskohut.medium.com/vert-x-micronaut-do-we-need-dependency-injection-in-the-microservices-world-84e43b3b228e
+All that was implemented as a reusable library:
+https://github.com/dburyak/vertx-tools
+Where config could look nicely like this:
+https://github.com/dburyak/vertx-tools/blob/main/test-app/src/main/resources/application.yaml
+and the app using it can use it in traditional way:
+
+- for type-safe
+  configuration: https://github.com/dburyak/vertx-tools/blob/main/test-app/src/main/java/com/dburyak/vertx/test/MemProperties.java
+- for injecting directly:
+  `SomeConstructor(@Nullable @Property(name = 'vertx.app-name') String cfgAppName`
+
+Initially I wanted to use DI, but decided to not overcomplicate things for this
+exercise.
+
+# Running locally
