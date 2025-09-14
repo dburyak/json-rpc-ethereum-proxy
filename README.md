@@ -131,4 +131,9 @@ and the app using it can use it in traditional way:
 Initially I wanted to use DI, but decided to not overcomplicate things for this
 exercise.
 
+Default approach with `config.json` is slightly inconvenient, so I used yaml
+format instead. Environment variables take precedence over config file values.
+Environment variables and keys for yaml config file are all available in the
+`Config.java` class.
+
 # Running locally

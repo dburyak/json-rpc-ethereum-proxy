@@ -36,13 +36,13 @@ configuration:
       name: console-plain-true
       target: SYSTEM_OUT
       patternLayout:
-        pattern: "%style{%d{ISO8601}}{normal,white} %highlight{%-5level} [%X{OPERATION_ID}] [%style{%-19.19t}{bright,blue}] %style{%-36.36logger{1.}}{bright,yellow}: %msg%n%throwable"
+        pattern: "%style{%d{ISO8601}}{normal,white} %highlight{%-5level} [%style{%-19.19t}{bright,blue}] %style{%-36.36logger{1.}}{bright,yellow}: %msg%n%throwable"
     RollingFile:
       - name: access-log-true
         fileName: ${appender.access-log.directory}/${appender.access-log.file-name}
         filePattern: ${appender.access-log.directory}/${appender.access-log.file-name-pattern}
         patternLayout:
-          pattern: "%d{ISO8601} [%X{OPERATION_ID}] - %msg%n%throwable"
+          pattern: "%d{ISO8601} - %msg%n%throwable"
         DefaultRolloverStrategy:
           fileIndex: nomax
           delete:
