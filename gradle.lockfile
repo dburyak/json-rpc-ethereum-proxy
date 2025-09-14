@@ -1,0 +1,31 @@
+# This is a Gradle generated file for dependency locking.
+# Manual edits can break the build and are not advised.
+# This file is expected to be part of source control.
+com.fasterxml.jackson.core:jackson-core:2.18.2=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+com.fasterxml.jackson:jackson-bom:2.18.2=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+io.netty:netty-buffer:4.2.5.Final=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+io.netty:netty-codec-base:4.2.5.Final=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+io.netty:netty-codec-compression:4.2.5.Final=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+io.netty:netty-codec-dns:4.2.5.Final=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+io.netty:netty-codec-http2:4.2.5.Final=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+io.netty:netty-codec-http:4.2.5.Final=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+io.netty:netty-codec-socks:4.2.5.Final=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+io.netty:netty-common:4.2.5.Final=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+io.netty:netty-handler-proxy:4.2.5.Final=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+io.netty:netty-handler:4.2.5.Final=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+io.netty:netty-resolver-dns:4.2.5.Final=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+io.netty:netty-resolver:4.2.5.Final=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+io.netty:netty-transport-native-unix-common:4.2.5.Final=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+io.netty:netty-transport:4.2.5.Final=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+io.reactivex.rxjava3:rxjava:3.0.13=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+io.vertx:vertx-core-logging:5.0.4=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+io.vertx:vertx-core:5.0.4=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+io.vertx:vertx-rx-gen:5.0.4=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+io.vertx:vertx-rx-java3-gen:5.0.4=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+io.vertx:vertx-rx-java3:5.0.4=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+net.bytebuddy:byte-buddy:1.15.11=testCompileClasspath,testRuntimeClasspath
+org.assertj:assertj-core:3.27.4=testCompileClasspath,testRuntimeClasspath
+org.projectlombok:lombok:1.18.40=annotationProcessor,compileClasspath
+org.reactivestreams:reactive-streams:1.0.3=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+org.slf4j:slf4j-api:2.0.17=compileClasspath,runtimeClasspath,testCompileClasspath,testRuntimeClasspath
+empty=testAnnotationProcessor

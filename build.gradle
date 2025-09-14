@@ -1,3 +1,59 @@
+plugins {
+    id 'java'
+    id 'application'
+    id 'jvm-test-suite'
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+configurations {
+    compileOnly { extendsFrom annotationProcessor }
+}
+
+dependencies {
+    annotationProcessor "org.projectlombok:lombok:$lombokVersion"
+    implementation "org.slf4j:slf4j-api:$slf4jVersion"
+    implementation "io.vertx:vertx-core:$vertxVersion"
+    implementation "io.vertx:vertx-rx-java3:$vertxVersion"
+
+    // testing
+    testImplementation "org.assertj:assertj-core:$assertjVersion"
+}
+
+tasks.withType(Test).configureEach {
+    useJUnitPlatform()
+    testLogging {
+        events 'passed', 'skipped', 'failed'
+    }
+}
+
+dependencyLocking {
+    lockAllConfigurations()
+}
+
+// https://docs.gradle.org/current/userguide/dependency_locking.html#lock_all_configurations_in_one_build_execution
+tasks.register('updateLockedVersions') {
+    notCompatibleWithConfigurationCache('Filters configurations at execution time')
+    doFirst {
+        assert gradle.startParameter.writeDependencyLocks:
+                "$path must be run from the command line with the `--write-locks` flag"
+    }
+    doLast {
+        configurations.findAll {
+            // Add any custom filtering on the configurations to be resolved
+            it.canBeResolved
+        }.each { it.resolve() }
+    }
+}
+
 wrapper {
     gradleVersion = project.property('org.gradle.version')
 }
