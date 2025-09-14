@@ -13,35 +13,44 @@ import lombok.extern.log4j.Log4j2;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 
 @Log4j2
 public class App {
 
     public static void main(String[] args) {
         var startupStartedAt = Instant.now();
-        log.debug("starting...");
+        log.debug("starting");
         var vertx = Vertx.vertx();
         initRxSchedulers(vertx);
         var cfgRetriever = configRetriever(vertx);
+        var verticleIds = new AtomicReference<List<String>>();
         cfgRetriever.rxGetConfig()
                 .map(Config::new)
                 .flatMap(cfg -> Observable.range(0, cfg.getNumVerticles())
-                        .flatMapSingle(i -> {
-                            return vertx.rxDeployVerticle(new JsonRpcProxyVerticle(cfg));
-                        })
+                        .flatMapSingle(i -> vertx.rxDeployVerticle(new JsonRpcProxyVerticle(cfg)))
                         .toList())
-                .subscribe((depIds) -> {
-                    log.info("proxy started: numVerticles={}, startTime={}", depIds.size(),
-                            Duration.between(startupStartedAt, Instant.now()));
+                .subscribe(depIds -> {
+                    verticleIds.set(depIds);
+                    log.info("app started: numVerticles={}, startupTime={}", depIds::size,
+                            () -> Duration.between(startupStartedAt, Instant.now()));
                 }, err -> {
                     log.error("failed to start", err);
                     vertx.rxClose().subscribe();
                 });
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             var shutdownStartedAt = Instant.now();
-            log.info("shutting down...");
-            vertx.rxClose().blockingAwait();
-            log.info("shutdown complete: shutdownTime={}", Duration.between(shutdownStartedAt, Instant.now()));
+            log.info("shutting down");
+            // First undeploy verticles to let them gracefully close resources and finish handling any in-flight
+            // requests. Only after that close the Vertx instance which will automatically close any associated
+            // resources.
+            Observable.fromIterable(verticleIds.get())
+                    .flatMapCompletable(vertx::rxUndeploy)
+                    .doOnComplete(() -> log.info("all verticles stopped, closing vertx"))
+                    .andThen(vertx.rxClose())
+                    .blockingAwait();
+            log.info("shutdown complete: shutdownTime={}", () -> Duration.between(shutdownStartedAt, Instant.now()));
         }));
     }
 

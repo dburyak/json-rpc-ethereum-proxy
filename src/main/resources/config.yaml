@@ -1,2 +1,4 @@
 jsonrpc:
-#  numVerticles: 8
+  #  numVerticles: 8
+  port: 8080
+  apiPath: /
