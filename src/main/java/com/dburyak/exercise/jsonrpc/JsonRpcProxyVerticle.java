@@ -2,6 +2,7 @@ package com.dburyak.exercise.jsonrpc;
 
 import io.reactivex.rxjava3.core.Completable;
 import io.reactivex.rxjava3.core.Maybe;
+import io.reactivex.rxjava3.core.Observable;
 import io.reactivex.rxjava3.core.Single;
 import io.vertx.rxjava3.core.AbstractVerticle;
 import io.vertx.rxjava3.ext.web.Router;
@@ -27,9 +28,19 @@ public class JsonRpcProxyVerticle extends AbstractVerticle {
                                 // if the Maybe is empty, it means that one of the handlers has already responded
                                 .flatMapCompletable(pCtx -> {
                                     reqCtx.response().headers().addAll(pCtx.getBackendResp().headers());
-                                    return reqCtx.response().rxEnd(pCtx.getBackendResp().body());
+                                    return reqCtx.response()
+                                            .setStatusCode(pCtx.getBackendResp().statusCode())
+                                            .setStatusMessage(pCtx.getBackendResp().statusMessage())
+                                            .rxEnd(pCtx.getBackendResp().body());
                                 })
-                                .subscribe();
+                                .subscribe(() -> {
+                                }, err -> {
+                                    log.error("unexpected error in the proxy itself, responding with 500", err);
+                                    if (!reqCtx.response().ended()) {
+                                        reqCtx.response().setStatusCode(500).rxEnd().subscribe(() -> {},
+                                                err2 -> log.error("failed to respond with 500", err2));
+                                    }
+                                });
                     });
                     return router;
                 })
@@ -44,9 +55,9 @@ public class JsonRpcProxyVerticle extends AbstractVerticle {
 
     @Override
     public Completable rxStop() {
-        return Completable.fromRunnable(() -> {
-            log.info("verticle stopped: verticleId={}", deploymentID());
-        });
+        return Observable.fromIterable(handlers)
+                .flatMapCompletable(AsyncCloseable::closeAsync)
+                .doOnComplete(() -> log.info("verticle stopped: verticleId={}", deploymentID()));
     }
 
     private Maybe<ProxiedReqCtx> processWithTheChain(ProxiedReqCtx reqCtx) {

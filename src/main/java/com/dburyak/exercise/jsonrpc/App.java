@@ -6,9 +6,11 @@ import io.vertx.config.ConfigRetrieverOptions;
 import io.vertx.config.ConfigStoreOptions;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
+import io.vertx.ext.web.client.WebClientOptions;
 import io.vertx.rxjava3.config.ConfigRetriever;
 import io.vertx.rxjava3.core.RxHelper;
 import io.vertx.rxjava3.core.Vertx;
+import io.vertx.rxjava3.ext.web.client.WebClient;
 import lombok.extern.log4j.Log4j2;
 
 import java.time.Duration;
@@ -28,13 +30,16 @@ public class App {
         var verticleIds = new AtomicReference<List<String>>();
         cfgRetriever.rxGetConfig()
                 .map(Config::new)
-                .flatMap(cfg -> Observable.range(0, cfg.getNumVerticles())
-                        .flatMapSingle(i -> {
-                            // request handlers may be stateful, so we create a separate instance for each verticle
-                            var proxiedReqHandlers = buildHandlers(cfg);
-                            return vertx.rxDeployVerticle(new JsonRpcProxyVerticle(cfg, proxiedReqHandlers));
-                        })
-                        .toList())
+                .flatMap(cfg -> {
+                    var webClient = buildWebClient(vertx);
+                    return Observable.range(0, cfg.getNumVerticles())
+                            .flatMapSingle(i -> {
+                                // request handlers may be stateful, so we create a separate instance for each verticle
+                                var proxiedReqHandlersChain = buildHandlersChain(cfg, webClient);
+                                return vertx.rxDeployVerticle(new JsonRpcProxyVerticle(cfg, proxiedReqHandlersChain));
+                            })
+                            .toList();
+                })
                 .subscribe(depIds -> {
                     verticleIds.set(depIds);
                     log.info("app started: numVerticles={}, startupTime={}", depIds::size,
@@ -57,6 +62,7 @@ public class App {
             log.info("shutdown complete: shutdownTime={}", () -> Duration.between(shutdownStartedAt, Instant.now()));
         }));
     }
+
 
     // in a more complex app we'd moved these factory methods into separate factories
 
@@ -82,7 +88,12 @@ public class App {
         );
     }
 
-    private static List<ReqHandler> buildHandlers(Config cfg) {
+    private static List<ReqHandler> buildHandlersChain(Config cfg, WebClient webClient) {
+        return List.of(new ReqForwardingHandler(cfg, webClient));
+    }
 
+    private static WebClient buildWebClient(Vertx vertx) {
+        // we pass the "user-agent" header from the incoming request
+        return WebClient.create(vertx, new WebClientOptions().setUserAgentEnabled(false));
     }
 }
