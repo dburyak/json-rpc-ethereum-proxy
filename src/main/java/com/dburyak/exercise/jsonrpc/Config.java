@@ -4,6 +4,7 @@ import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import lombok.Value;
 
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
 import java.util.function.Supplier;
@@ -22,18 +23,23 @@ public class Config {
     public static final String API_PATH = "apiPath";
     public static final String API_PATH_DEFAULT = "/";
     public static final String PROXIED_BACKEND_URLS_ENV = CFG_PREFIX_ENV + "PROXIED_BACKEND_URLS";
+    public static final String GRACEFUL_SHUTDOWN_TIMEOUT_ENV = CFG_PREFIX_ENV + "GRACEFUL_SHUTDOWN_TIMEOUT";
+    public static final String GRACEFUL_SHUTDOWN_TIMEOUT = "gracefulShutdownTimeout";
+    public static final String GRACEFUL_SHUTDOWN_TIMEOUT_DEFAULT_STR = "60s";
 
     public static final List<String> ALL_ENV_VARS = List.of(
             NUM_VERTICLES_ENV,
             PORT_ENV,
             API_PATH_ENV,
-            PROXIED_BACKEND_URLS_ENV
+            PROXIED_BACKEND_URLS_ENV,
+            GRACEFUL_SHUTDOWN_TIMEOUT_ENV
     );
 
     int numVerticles;
     int port;
     String apiPath;
     List<String> proxiedBackendUrls;
+    Duration gracefulShutdownTimeout;
 
     public Config(JsonObject cfgJson) {
         this.numVerticles = getInt(NUM_VERTICLES_ENV, NUM_VERTICLES, cfgJson,
@@ -46,6 +52,9 @@ public class Config {
                     + PROXIED_BACKEND_URLS_ENV);
         }
         this.proxiedBackendUrls = proxiedBackendUrls;
+        var gracefulShutdownTimeoutStr = getString(GRACEFUL_SHUTDOWN_TIMEOUT_ENV, GRACEFUL_SHUTDOWN_TIMEOUT, cfgJson,
+                () -> GRACEFUL_SHUTDOWN_TIMEOUT_DEFAULT_STR);
+        this.gracefulShutdownTimeout = Duration.parse("PT" + gracefulShutdownTimeoutStr);
     }
 
     private static int getInt(String envVarName, String cfgName, JsonObject cfgJson, Supplier<Integer> defaultValue) {

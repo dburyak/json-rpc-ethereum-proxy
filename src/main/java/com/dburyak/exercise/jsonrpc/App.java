@@ -1,5 +1,6 @@
 package com.dburyak.exercise.jsonrpc;
 
+import io.reactivex.rxjava3.core.Completable;
 import io.reactivex.rxjava3.core.Observable;
 import io.reactivex.rxjava3.plugins.RxJavaPlugins;
 import io.vertx.config.ConfigRetrieverOptions;
@@ -10,28 +11,43 @@ import io.vertx.ext.web.client.WebClientOptions;
 import io.vertx.rxjava3.config.ConfigRetriever;
 import io.vertx.rxjava3.core.RxHelper;
 import io.vertx.rxjava3.core.Vertx;
+import io.vertx.rxjava3.core.http.HttpClient;
 import io.vertx.rxjava3.ext.web.client.WebClient;
+import io.vertx.rxjava3.redis.client.Redis;
 import lombok.extern.log4j.Log4j2;
 
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
 
 @Log4j2
 public class App {
+    private volatile Vertx vertx;
+    private volatile Config cfg;
+    private volatile List<String> verticleIds = List.of();
+    private volatile HttpClient httpClient;
+    private final AtomicBoolean isShuttingDown = new AtomicBoolean(false);
 
     public static void main(String[] args) {
+        new App().start();
+    }
+
+    public void start() {
         var startupStartedAt = Instant.now();
         log.debug("starting");
-        var vertx = Vertx.vertx();
+        vertx = Vertx.vertx();
         initRxSchedulers(vertx);
         var cfgRetriever = configRetriever(vertx);
-        var verticleIds = new AtomicReference<List<String>>();
         cfgRetriever.rxGetConfig()
                 .map(Config::new)
                 .flatMap(cfg -> {
-                    var webClient = buildWebClient(vertx);
+                    this.cfg = cfg;
+                    httpClient = buildHttpClient(vertx);
+                    var webClient = buildWebClient(httpClient);
+                    var redisClient = buildRedisClient(vertx, cfg);
                     return Observable.range(0, cfg.getNumVerticles())
                             .flatMapSingle(i -> {
                                 // request handlers may be stateful, so we create a separate instance for each verticle
@@ -41,26 +57,44 @@ public class App {
                             .toList();
                 })
                 .subscribe(depIds -> {
-                    verticleIds.set(depIds);
+                    verticleIds = depIds;
                     log.info("app started: numVerticles={}, startupTime={}", depIds::size,
                             () -> Duration.between(startupStartedAt, Instant.now()));
                 }, err -> {
                     log.error("failed to start", err);
                     vertx.rxClose().subscribe();
                 });
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            var shutdownStartedAt = Instant.now();
-            log.info("shutting down");
-            // First undeploy verticles to let them gracefully close resources and finish handling any in-flight
-            // requests. Only after that close the Vertx instance which will automatically close any associated
-            // resources.
-            Observable.fromIterable(verticleIds.get())
-                    .flatMapCompletable(vertx::rxUndeploy)
-                    .doOnComplete(() -> log.info("all verticles stopped, closing vertx"))
-                    .andThen(vertx.rxClose())
-                    .blockingAwait();
-            log.info("shutdown complete: shutdownTime={}", () -> Duration.between(shutdownStartedAt, Instant.now()));
-        }));
+        Runtime.getRuntime().addShutdownHook(new Thread(this::shutdown));
+    }
+
+    public void shutdown() {
+        // shutdown potentially may be called multiple times from tests
+        if (!isShuttingDown.compareAndSet(false, true)) {
+            log.warn("multiple shutdown calls, shutdown already in progress, ignoring");
+            return;
+        }
+        var shutdownStartedAt = Instant.now();
+        log.info("shutting down");
+        // Graceful shutdown in 3 steps:
+        // - first undeploy verticles to let them gracefully close their resources and stop receiving new requests (at
+        //   this stage we still can have some queued up downstream requests)
+        // - then gracefully shutdown (not the same as "close") the HttpClient we use to call proxied backends
+        // - now we're good to close the Vertx instance. Vertx automatically closes any associated resources created
+        //   via its API (e.g. HttpClient, Redis client, etc.), but does that abruptly killing any in-flight data.
+        //   That's why we need first two steps before closing Vertx.
+        // NOTE: there's graceful shutdown timeout inaccuracy as we need to apply timeout to ALL the steps together.
+        // It's not worth to implement more complex logic for this exercise.
+        var closeHttpClient = (httpClient != null)
+                ? httpClient.rxShutdown(cfg.getGracefulShutdownTimeout().toMillis(), MILLISECONDS)
+                : Completable.complete();
+        Observable.fromIterable(verticleIds)
+                .flatMapCompletable(vertx::rxUndeploy)
+                .doOnComplete(() -> log.info("all verticles stopped, closing downstream http client"))
+                .andThen(closeHttpClient)
+                .doOnComplete(() -> log.info("closing vertx"))
+                .andThen(vertx.rxClose())
+                .blockingAwait();
+        log.info("shutdown complete: shutdownTime={}", () -> Duration.between(shutdownStartedAt, Instant.now()));
     }
 
 
@@ -92,8 +126,16 @@ public class App {
         return List.of(new ReqForwardingHandler(cfg, webClient));
     }
 
-    private static WebClient buildWebClient(Vertx vertx) {
-        // we pass the "user-agent" header from the incoming request
-        return WebClient.create(vertx, new WebClientOptions().setUserAgentEnabled(false));
+    private static HttpClient buildHttpClient(Vertx vertx) {
+        return vertx.createHttpClient();
+    }
+
+    private static WebClient buildWebClient(HttpClient httpClient) {
+        // we pass the "user-agent" header value down from the incoming request
+        return WebClient.wrap(httpClient, new WebClientOptions().setUserAgentEnabled(false));
+    }
+
+    private static Redis buildRedisClient(Vertx vertx, Config cfg) {
+        return Redis.createClient(vertx);
     }
 }

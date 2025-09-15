@@ -4,11 +4,9 @@ import io.reactivex.rxjava3.core.Maybe;
 import io.vertx.core.http.RequestOptions;
 import io.vertx.rxjava3.ext.web.client.HttpRequest;
 import io.vertx.rxjava3.ext.web.client.WebClient;
-import lombok.extern.log4j.Log4j2;
 
 import java.util.List;
 
-@Log4j2
 public class ReqForwardingHandler implements ReqHandler {
     private static final String X_FORWARDED_FOR_HEADER = "x-forwarded-for";
     private static final String HOST_HEADER = "host";
@@ -40,10 +38,8 @@ public class ReqForwardingHandler implements ReqHandler {
                     var reqOpts = nextReqOpts();
                     var pReq = webClient.request(pReqCtx.getIncomingReqCtx().request().method(), reqOpts);
                     pReq = populateHeaders(pReq, pReqCtx, reqOpts);
-                    log.debug("forwarding request to: {}", reqOpts.getHost());
                     return pReq.rxSendBuffer(inBodyBuf)
                             .map(backendResp -> {
-                                log.debug("got resp from backend: {}", reqOpts.getHost());
                                 pReqCtx.setBackendResp(backendResp);
                                 return pReqCtx;
                             });
