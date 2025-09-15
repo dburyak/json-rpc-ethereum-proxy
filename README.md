@@ -44,7 +44,8 @@ its features.
   choice for that, but this is out of scope for this exercise. Billing
   information is important for business, so it should be accurate and stored
   reliably. I.e. we should store it in a persistent storage and not lose it on
-  crashes/restarts.
+  crashes/restarts. Also, tracking information should be accurate regardless of
+  the number of proxy instances.
 
 # Design decisions
 

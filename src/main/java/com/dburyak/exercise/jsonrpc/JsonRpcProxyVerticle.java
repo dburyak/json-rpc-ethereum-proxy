@@ -1,5 +1,6 @@
 package com.dburyak.exercise.jsonrpc;
 
+import com.dburyak.exercise.jsonrpc.err.ProxyPublicException;
 import io.reactivex.rxjava3.core.Completable;
 import io.reactivex.rxjava3.core.Maybe;
 import io.reactivex.rxjava3.core.Observable;
@@ -60,10 +61,22 @@ public class JsonRpcProxyVerticle extends AbstractVerticle {
                     })
                     .subscribe(() -> {
                     }, err -> {
-                        log.error("unexpected error in the proxy itself, responding with 500", err);
-                        if (!reqCtx.response().ended()) {
-                            reqCtx.response().setStatusCode(500).rxEnd().subscribe(() -> {},
-                                    err2 -> log.error("failed to respond with 500", err2));
+                        if (err instanceof ProxyPublicException publicErr) {
+                            log.debug("request processing failed", publicErr);
+                            if (!reqCtx.response().ended()) {
+                                reqCtx.response()
+                                        .setStatusCode(publicErr.getHttpStatusCode())
+                                        .rxEnd(JsonRpcResponse.failed(publicErr).toJson().toBuffer())
+                                        .subscribe(() -> {}, err2 ->
+                                                log.error("failed to respond with {}",
+                                                        publicErr.getHttpStatusCode(), err2));
+                            }
+                        } else {
+                            log.error("unexpected error in the proxy itself, responding with 500", err);
+                            if (!reqCtx.response().ended()) {
+                                reqCtx.response().setStatusCode(500).rxEnd().subscribe(() -> {},
+                                        err2 -> log.error("failed to respond with 500", err2));
+                            }
                         }
                     });
         });

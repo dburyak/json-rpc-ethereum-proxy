@@ -1,5 +1,6 @@
 package com.dburyak.exercise.jsonrpc;
 
+import com.dburyak.exercise.jsonrpc.handlers.ReqForwardingHandler;
 import io.reactivex.rxjava3.core.Completable;
 import io.reactivex.rxjava3.core.Observable;
 import io.reactivex.rxjava3.plugins.RxJavaPlugins;

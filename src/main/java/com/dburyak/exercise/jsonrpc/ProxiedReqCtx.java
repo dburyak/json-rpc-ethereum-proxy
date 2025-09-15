@@ -14,4 +14,5 @@ import lombok.Data;
 public class ProxiedReqCtx {
     private final RoutingContext incomingReqCtx;
     private HttpResponse<Buffer> backendResp;
+    private JsonRpcRequest jsonRpcRequest;
 }

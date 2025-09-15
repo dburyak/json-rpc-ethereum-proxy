@@ -1,5 +1,8 @@
-package com.dburyak.exercise.jsonrpc;
+package com.dburyak.exercise.jsonrpc.handlers;
 
+import com.dburyak.exercise.jsonrpc.Config;
+import com.dburyak.exercise.jsonrpc.ProxiedReqCtx;
+import com.dburyak.exercise.jsonrpc.ReqHandler;
 import io.reactivex.rxjava3.core.Maybe;
 import io.vertx.core.http.RequestOptions;
 import io.vertx.rxjava3.ext.web.client.HttpRequest;
@@ -7,6 +10,10 @@ import io.vertx.rxjava3.ext.web.client.WebClient;
 
 import java.util.List;
 
+/**
+ * This is the main handler for the application - it forwards the incoming request to one of the backends and sends the
+ * backend response back to the client.
+ */
 public class ReqForwardingHandler implements ReqHandler {
     private static final String X_FORWARDED_FOR_HEADER = "x-forwarded-for";
     private static final String HOST_HEADER = "host";
