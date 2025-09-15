@@ -41,7 +41,10 @@ its features.
 * Method call tracking by IP and REST API to retrieve this information. This is
   an initial step towards billing. For proper billing, we would need to reliably
   identify users instead of just using IP addresses. API keys would be a good
-  choice for that, but this is out of scope for this exercise.
+  choice for that, but this is out of scope for this exercise. Billing
+  information is important for business, so it should be accurate and stored
+  reliably. I.e. we should store it in a persistent storage and not lose it on
+  crashes/restarts.
 
 # Design decisions
 
@@ -135,5 +138,15 @@ Default approach with `config.json` is slightly inconvenient, so I used yaml
 format instead. Environment variables take precedence over config file values.
 Environment variables and keys for yaml config file are all available in the
 `Config.java` class.
+
+## Extensibility
+
+We'll follow a typical approach for such apps - chain of processors, where each
+processor performs a specific task and passes the request (+ any other data) to
+the next processor in the chain. This way, we can easily add/remove/modify
+processor implementations according to changing requirements. Also, it will be
+easy to make the chain configurable to be able to enable/disable certain
+features. Another benefit of this approach is that each processor can be tested
+in isolation.
 
 # Running locally

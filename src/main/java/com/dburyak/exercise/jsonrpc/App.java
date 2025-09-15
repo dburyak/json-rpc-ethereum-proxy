@@ -29,7 +29,11 @@ public class App {
         cfgRetriever.rxGetConfig()
                 .map(Config::new)
                 .flatMap(cfg -> Observable.range(0, cfg.getNumVerticles())
-                        .flatMapSingle(i -> vertx.rxDeployVerticle(new JsonRpcProxyVerticle(cfg)))
+                        .flatMapSingle(i -> {
+                            // request handlers may be stateful, so we create a separate instance for each verticle
+                            var proxiedReqHandlers = buildHandlers(cfg);
+                            return vertx.rxDeployVerticle(new JsonRpcProxyVerticle(cfg, proxiedReqHandlers));
+                        })
                         .toList())
                 .subscribe(depIds -> {
                     verticleIds.set(depIds);
@@ -76,5 +80,9 @@ public class App {
                         .setConfig(new JsonObject()
                                 .put("keys", new JsonArray(Config.ALL_ENV_VARS))))
         );
+    }
+
+    private static List<ReqHandler> buildHandlers(Config cfg) {
+
     }
 }
