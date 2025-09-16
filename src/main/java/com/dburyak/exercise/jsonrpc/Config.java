@@ -7,26 +7,21 @@ import lombok.Value;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 @Value
 public class Config {
     public static final String CFG_PREFIX_ENV = "JSONRPC_";
-    public static final String CFG_PREFIX = "jsonrpc";
-
     public static final String NUM_VERTICLES_ENV = CFG_PREFIX_ENV + "NUM_VERTICLES";
-    public static final String NUM_VERTICLES = "numVerticles";
     public static final String PORT_ENV = CFG_PREFIX_ENV + "PORT";
-    public static final String PORT = "port";
-    public static final int PORT_DEFAULT = 8080;
     public static final String API_PATH_ENV = CFG_PREFIX_ENV + "API_PATH";
-    public static final String API_PATH = "apiPath";
-    public static final String API_PATH_DEFAULT = "/";
     public static final String PROXIED_BACKEND_URLS_ENV = CFG_PREFIX_ENV + "PROXIED_BACKEND_URLS";
     public static final String GRACEFUL_SHUTDOWN_TIMEOUT_ENV = CFG_PREFIX_ENV + "GRACEFUL_SHUTDOWN_TIMEOUT";
-    public static final String GRACEFUL_SHUTDOWN_TIMEOUT = "gracefulShutdownTimeout";
-    public static final String GRACEFUL_SHUTDOWN_TIMEOUT_DEFAULT_STR = "60s";
-
+    public static final String GLOBAL_IP_RATE_LIMITING_ENABLED_ENV = CFG_PREFIX_ENV + "GLOBAL_IP_RATE_LIMITING_ENABLED";
+    public static final String PER_METHOD_IP_RATE_LIMITING_ENABLED_ENV =
+            CFG_PREFIX_ENV + "PER_METHOD_IP_RATE_LIMITING_ENABLED";
     public static final List<String> ALL_ENV_VARS = List.of(
             NUM_VERTICLES_ENV,
             PORT_ENV,
@@ -35,36 +30,114 @@ public class Config {
             GRACEFUL_SHUTDOWN_TIMEOUT_ENV
     );
 
+    private static final String CFG_PREFIX = "jsonrpc";
+    private static final String NUM_VERTICLES = "numVerticles";
+    private static final String PORT = "port";
+    private static final int PORT_DEFAULT = 8080;
+    private static final String API_PATH = "apiPath";
+    private static final String API_PATH_DEFAULT = "/";
+    private static final String GRACEFUL_SHUTDOWN_TIMEOUT = "gracefulShutdownTimeout";
+    private static final String GRACEFUL_SHUTDOWN_TIMEOUT_DEFAULT_STR = "60s";
+    private static final String GLOBAL_IP_RATE_LIMITING = "globalIpRateLimiting";
+    private static final String PER_METHOD_IP_RATE_LIMITING = "perMethodIpRateLimiting";
+    private static final String ENABLED = "enabled";
+    private static final String REQUESTS = "requests";
+    private static final String TIME_WINDOW = "timeWindow";
+    private static final String LOCAL_CACHE_SIZE = "localCacheSize";
+    private static final String METHODS = "methods";
+
+
     int numVerticles;
     int port;
     String apiPath;
     List<String> proxiedBackendUrls;
     Duration gracefulShutdownTimeout;
+    GlobalIpRateLimiting globalIpRateLimiting;
+    PerMethodIpRateLimiting perMethodIpRateLimiting;
 
-    public Config(JsonObject cfgJson) {
-        this.numVerticles = getInt(NUM_VERTICLES_ENV, NUM_VERTICLES, cfgJson,
+    @Value
+    public static class GlobalIpRateLimiting {
+        boolean enabled;
+        int requests;
+        Duration timeWindow;
+        int localCacheSize;
+    }
+
+    @Value
+    public static class PerMethodIpRateLimiting {
+        boolean enabled;
+        int localCacheSize;
+        Map<String, MethodCfg> methodCfgs;
+
+        @Value
+        public static class MethodCfg {
+            String method;
+            int requests;
+            Duration timeWindow;
+        }
+    }
+
+    public Config(JsonObject cfgRootJson) {
+        var cfgProxyJson = cfgRootJson.getJsonObject(CFG_PREFIX);
+        this.numVerticles = getInt(NUM_VERTICLES_ENV, cfgRootJson, NUM_VERTICLES, cfgProxyJson,
                 () -> Runtime.getRuntime().availableProcessors());
-        this.port = getInt(PORT_ENV, PORT, cfgJson, () -> PORT_DEFAULT);
-        this.apiPath = getString(API_PATH_ENV, API_PATH, cfgJson, () -> API_PATH_DEFAULT);
-        var proxiedBackendUrls = getStringList(PROXIED_BACKEND_URLS_ENV, null, cfgJson);
+        this.port = getInt(PORT_ENV, cfgRootJson, PORT, cfgProxyJson, () -> PORT_DEFAULT);
+        this.apiPath = getString(API_PATH_ENV, cfgRootJson, API_PATH, cfgProxyJson, () -> API_PATH_DEFAULT);
+        var proxiedBackendUrls = getStringList(PROXIED_BACKEND_URLS_ENV, cfgRootJson, null, null);
         if (proxiedBackendUrls == null || proxiedBackendUrls.isEmpty()) {
             throw new IllegalArgumentException("At least one proxied backend URL must be provided via env var "
                     + PROXIED_BACKEND_URLS_ENV);
         }
         this.proxiedBackendUrls = proxiedBackendUrls;
-        var gracefulShutdownTimeoutStr = getString(GRACEFUL_SHUTDOWN_TIMEOUT_ENV, GRACEFUL_SHUTDOWN_TIMEOUT, cfgJson,
-                () -> GRACEFUL_SHUTDOWN_TIMEOUT_DEFAULT_STR);
-        this.gracefulShutdownTimeout = Duration.parse("PT" + gracefulShutdownTimeoutStr);
+        var gracefulShutdownTimeoutStr = getString(GRACEFUL_SHUTDOWN_TIMEOUT_ENV, cfgRootJson,
+                GRACEFUL_SHUTDOWN_TIMEOUT, cfgProxyJson, () -> GRACEFUL_SHUTDOWN_TIMEOUT_DEFAULT_STR);
+        this.gracefulShutdownTimeout = parseDuration(gracefulShutdownTimeoutStr);
+        var globalIpRateLmtlCfgJson = cfgProxyJson != null ? cfgProxyJson.getJsonObject(GLOBAL_IP_RATE_LIMITING) : null;
+        this.globalIpRateLimiting = new GlobalIpRateLimiting(
+                getBoolean(GLOBAL_IP_RATE_LIMITING_ENABLED_ENV, cfgRootJson, ENABLED, globalIpRateLmtlCfgJson,
+                        () -> false),
+                getInt(null, null, REQUESTS, globalIpRateLmtlCfgJson, () -> 5_000),
+                parseDuration(getString(null, null, TIME_WINDOW, globalIpRateLmtlCfgJson, () -> "1m")),
+                getInt(null, null, LOCAL_CACHE_SIZE, globalIpRateLmtlCfgJson, () -> 5_000)
+        );
+        this.perMethodIpRateLimiting = parsePerMethodIpRateLmtCfg(cfgRootJson);
     }
 
-    private static int getInt(String envVarName, String cfgName, JsonObject cfgJson, Supplier<Integer> defaultValue) {
-        var envValue = cfgJson.getInteger(envVarName);
-        if (envValue != null) {
-            return envValue;
+    private static PerMethodIpRateLimiting parsePerMethodIpRateLmtCfg(JsonObject cfgProxyJson) {
+        var perMtdIpRtlmtCfgJson = cfgProxyJson != null ? cfgProxyJson.getJsonObject(PER_METHOD_IP_RATE_LIMITING)
+                : null;
+        var enabled = getBoolean(PER_METHOD_IP_RATE_LIMITING_ENABLED_ENV, cfgProxyJson, ENABLED, perMtdIpRtlmtCfgJson,
+                () -> false);
+        var localCacheSize = getInt(null, null, LOCAL_CACHE_SIZE, perMtdIpRtlmtCfgJson, () -> 5_000);
+        var methodsCfgJson = perMtdIpRtlmtCfgJson != null ? perMtdIpRtlmtCfgJson.getJsonObject(METHODS) : null;
+        var methodsCfgMap = methodsCfgJson.stream()
+                .map(e -> {
+                    var method = e.getKey();
+                    var methodCfgJson = (JsonObject) e.getValue();
+                    var requests = getInt(null, null, REQUESTS, methodCfgJson, () -> {
+                        throw new IllegalArgumentException(REQUESTS + " must be provided for " +
+                                PER_METHOD_IP_RATE_LIMITING + " method " + method);
+                    });
+                    var timeWindow = parseDuration(getString(null, null, TIME_WINDOW, methodCfgJson, () -> {
+                        throw new IllegalArgumentException(TIME_WINDOW + " must be provided for " +
+                                PER_METHOD_IP_RATE_LIMITING + " method " + method);
+                    }));
+                    return new PerMethodIpRateLimiting.MethodCfg(method, requests, timeWindow);
+                })
+                .collect(Collectors.toMap(PerMethodIpRateLimiting.MethodCfg::getMethod, m -> m));
+        return new PerMethodIpRateLimiting(enabled, localCacheSize, methodsCfgMap);
+    }
+
+    private static int getInt(String envVarName, JsonObject cfgJson, String cfgName, JsonObject subCfgJson,
+            Supplier<Integer> defaultValue) {
+        if (envVarName != null) {
+            var envValue = cfgJson.getInteger(envVarName);
+            if (envValue != null) {
+                return envValue;
+            }
         }
-        var subCfg = cfgJson.getJsonObject(CFG_PREFIX);
-        if (subCfg != null) {
-            var cfgValue = subCfg.getInteger(cfgName);
+        if (subCfgJson != null && cfgName != null) {
+            var cfgValue = subCfgJson.getInteger(cfgName);
             if (cfgValue != null) {
                 return cfgValue;
             }
@@ -72,15 +145,16 @@ public class Config {
         return defaultValue.get();
     }
 
-    private static String getString(String envVarName, String cfgName, JsonObject cfgJson,
+    private static String getString(String envVarName, JsonObject cfgJson, String cfgName, JsonObject subCfgJson,
             Supplier<String> defaultValue) {
-        var envValue = cfgJson.getString(envVarName);
-        if (envValue != null) {
-            return envValue;
+        if (envVarName != null) {
+            var envValue = cfgJson.getString(envVarName);
+            if (envValue != null) {
+                return envValue;
+            }
         }
-        var subCfg = cfgJson.getJsonObject(CFG_PREFIX);
-        if (subCfg != null) {
-            var cfgValue = subCfg.getString(cfgName);
+        if (subCfgJson != null && cfgName != null) {
+            var cfgValue = subCfgJson.getString(cfgName);
             if (cfgValue != null) {
                 return cfgValue;
             }
@@ -88,25 +162,51 @@ public class Config {
         return defaultValue.get();
     }
 
-    private static List<String> getStringList(String envVarName, String cfgName, JsonObject cfgJson,
-            Supplier<List<String>> defaultValue) {
-        var envValue = cfgJson.getValue(envVarName);
-        // Vertx attempts to parse env var values as JSON, i.e. value '["a","b"]' becomes a List, while comma-separated
-        // string "a,b" stays a String as is. It's not very intuitive and not what people used to with the majority
-        // of the applications/frameworks, so we handle both cases here.
-        if (envValue != null) {
-            return jsonValueToStringList(envValue);
+    private static boolean getBoolean(String envVarName, JsonObject cfgJson, String cfgName, JsonObject subCfgJson,
+            Supplier<Boolean> defaultValue) {
+        if (envVarName != null) {
+            var envValue = cfgJson.getBoolean(envVarName);
+            if (envValue != null) {
+                return envValue;
+            }
         }
-        if (cfgName != null) {
-            var subCfg = cfgJson.getJsonObject(CFG_PREFIX);
-            if (subCfg != null) {
-                var cfgValue = subCfg.getValue(cfgName);
-                if (cfgValue != null) {
-                    return jsonValueToStringList(cfgValue);
-                }
+        if (subCfgJson != null && cfgName != null) {
+            var cfgValue = subCfgJson.getBoolean(cfgName);
+            if (cfgValue != null) {
+                return cfgValue;
             }
         }
         return defaultValue.get();
+    }
+
+    private static boolean getBoolean(String envVarName, JsonObject cfgJson, String cfgName, JsonObject subCfgJson) {
+        return getBoolean(envVarName, cfgJson, cfgName, subCfgJson, () -> false);
+    }
+
+    private static List<String> getStringList(String envVarName, JsonObject cfgJson, String cfgName,
+            JsonObject subCfgJson, Supplier<List<String>> defaultValue) {
+        if (envVarName != null) {
+            var envValue = cfgJson.getValue(envVarName);
+            // Vertx attempts to parse env var values as JSON, i.e. value '["a","b"]' becomes a List, while
+            // comma-separated
+            // string "a,b" stays a String as is. It's not very intuitive and not what people used to with the majority
+            // of the applications/frameworks, so we handle both cases here.
+            if (envValue != null) {
+                return jsonValueToStringList(envValue);
+            }
+        }
+        if (subCfgJson != null && cfgName != null) {
+            var cfgValue = subCfgJson.getValue(cfgName);
+            if (cfgValue != null) {
+                return jsonValueToStringList(cfgValue);
+            }
+        }
+        return defaultValue.get();
+    }
+
+    private static List<String> getStringList(String envVarName, JsonObject cfgJson, String cfgName,
+            JsonObject subCfgJson) {
+        return getStringList(envVarName, cfgJson, cfgName, subCfgJson, () -> null);
     }
 
     private static List<String> jsonValueToStringList(Object value) {
@@ -119,7 +219,8 @@ public class Config {
                 .toList();
     }
 
-    private static List<String> getStringList(String envVarName, String cfgName, JsonObject cfgJson) {
-        return getStringList(envVarName, cfgName, cfgJson, () -> null);
+    private static Duration parseDuration(String durationStr) {
+        // for simple cases this should work, e.g. "60s", "5m", "1h", "2h30m", "1h15m10s"
+        return Duration.parse("PT" + durationStr);
     }
 }

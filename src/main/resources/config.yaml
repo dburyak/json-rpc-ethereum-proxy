@@ -3,3 +3,15 @@ jsonrpc:
   port: 8080
   apiPath: /
   gracefulShutdownTimeout: 60s
+  globalIpRateLimiting:
+    enabled: true
+    requests: 60
+    timeWindow: 1m
+    localCacheSize: 5000
+  perMethodIpRateLimiting:
+    enabled: true
+    localCacheSize: 5000
+    methods:
+      eth_blockNumber:
+        requests: 100
+        timeWindow: 1m

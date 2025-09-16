@@ -1,6 +1,9 @@
 package com.dburyak.exercise.jsonrpc;
 
+import com.dburyak.exercise.jsonrpc.handlers.JsonRpcParsingHandler;
 import com.dburyak.exercise.jsonrpc.handlers.ReqForwardingHandler;
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import io.reactivex.rxjava3.core.Completable;
 import io.reactivex.rxjava3.core.Observable;
 import io.reactivex.rxjava3.plugins.RxJavaPlugins;
@@ -15,6 +18,7 @@ import io.vertx.rxjava3.core.Vertx;
 import io.vertx.rxjava3.core.http.HttpClient;
 import io.vertx.rxjava3.ext.web.client.WebClient;
 import io.vertx.rxjava3.redis.client.Redis;
+import io.vertx.rxjava3.redis.client.RedisConnection;
 import lombok.extern.log4j.Log4j2;
 
 import java.time.Duration;
@@ -49,13 +53,17 @@ public class App {
                     httpClient = buildHttpClient(vertx);
                     var webClient = buildWebClient(httpClient);
                     var redisClient = buildRedisClient(vertx, cfg);
-                    return Observable.range(0, cfg.getNumVerticles())
-                            .flatMapSingle(i -> {
-                                // request handlers may be stateful, so we create a separate instance for each verticle
-                                var proxiedReqHandlersChain = buildHandlersChain(cfg, webClient);
-                                return vertx.rxDeployVerticle(new JsonRpcProxyVerticle(cfg, proxiedReqHandlersChain));
-                            })
-                            .toList();
+                    var globalIpRtlmtCache = buildCaffeineCache(1_000, Duration.ofMinutes(10));
+                    return redisClient.rxConnect().flatMap(redis ->
+                            Observable.range(0, cfg.getNumVerticles())
+                                    .flatMapSingle(i -> {
+                                        // request handlers may be stateful, so we create a separate instance for each
+                                        // verticle
+                                        var proxiedReqHandlersChain = buildHandlersChain(cfg, webClient, redis);
+                                        return vertx.rxDeployVerticle(new JsonRpcProxyVerticle(cfg,
+                                                proxiedReqHandlersChain));
+                                    })
+                                    .toList());
                 })
                 .subscribe(depIds -> {
                     verticleIds = depIds;
@@ -123,8 +131,11 @@ public class App {
         );
     }
 
-    private static List<ReqHandler> buildHandlersChain(Config cfg, WebClient webClient) {
-        return List.of(new ReqForwardingHandler(cfg, webClient));
+    private static List<ReqHandler> buildHandlersChain(Config cfg, WebClient webClient, RedisConnection redis) {
+        return List.of(
+                new JsonRpcParsingHandler(),
+                new ReqForwardingHandler(cfg, webClient)
+        );
     }
 
     private static HttpClient buildHttpClient(Vertx vertx) {
@@ -138,5 +149,13 @@ public class App {
 
     private static Redis buildRedisClient(Vertx vertx, Config cfg) {
         return Redis.createClient(vertx);
+    }
+
+    private static <V> Cache<String, V> buildCaffeineCache(int maxSize, Duration ttl) {
+        var builder = Caffeine.newBuilder().maximumSize(maxSize);
+        if (ttl != null) {
+            builder.expireAfterAccess(ttl);
+        }
+        return builder.build();
     }
 }

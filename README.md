@@ -47,6 +47,11 @@ its features.
   crashes/restarts. Also, tracking information should be accurate regardless of
   the number of proxy instances.
 
+# Simplifications
+
+At some point I gave up trying to make everything configurable via env
+variables. So, some values are configurable only via config file.
+
 # Design decisions
 
 ## Storage - Redis
