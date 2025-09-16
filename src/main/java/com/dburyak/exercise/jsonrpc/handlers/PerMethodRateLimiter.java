@@ -107,7 +107,7 @@ public class PerMethodRateLimiter implements ReqHandler {
                 .filter(ignr -> inFlightRequests <= 0)
                 .take(1)
                 .ignoreElements()
-                .timeout(gracefulShutdownTimeout.toMillis(), MILLISECONDS);
+                .timeout(gracefulShutdownTimeout.toMillis(), MILLISECONDS, Completable.complete());
     }
 
     private boolean cachedHitLimit(String ip, String method, long nowMs) {

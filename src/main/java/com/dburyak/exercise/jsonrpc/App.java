@@ -1,5 +1,6 @@
 package com.dburyak.exercise.jsonrpc;
 
+import com.dburyak.exercise.jsonrpc.handlers.CallTrackingHandler;
 import com.dburyak.exercise.jsonrpc.handlers.GlobalIpRateLimiter;
 import com.dburyak.exercise.jsonrpc.handlers.JsonRpcParsingHandler;
 import com.dburyak.exercise.jsonrpc.handlers.MetadataPopulatingHandler;
@@ -59,17 +60,19 @@ public class App {
                     var redisClient = buildRedisClient(vertx, cfg);
                     var globalIpRtlmtCache = buildGlobalIpRtlmtCaffeineCache(cfg);
                     var perMethodIpRtlmtCache = buildPerMethodIpRtlmtCaffeineCache(cfg);
-                    return redisClient.rxConnect().flatMap(redis ->
-                            Observable.range(0, cfg.getNumVerticles())
-                                    .flatMapSingle(i -> {
-                                        // request handlers may be stateful, so we create a separate instance for each
-                                        // verticle
-                                        var proxiedReqHandlersChain = buildHandlersChain(cfg, webClient,
-                                                redis, globalIpRtlmtCache, perMethodIpRtlmtCache);
-                                        return vertx.rxDeployVerticle(new JsonRpcProxyVerticle(cfg,
-                                                proxiedReqHandlersChain));
-                                    })
-                                    .toList());
+                    return redisClient.rxConnect().flatMap(redis -> {
+                        var callRepo = buildCallRepo(redis);
+                        return Observable.range(0, cfg.getNumVerticles())
+                                .flatMapSingle(i -> {
+                                    // request handlers may be stateful, so we create a separate instance for each
+                                    // verticle
+                                    var proxiedReqHandlersChain = buildHandlersChain(cfg, webClient,
+                                            redis, globalIpRtlmtCache, perMethodIpRtlmtCache, callRepo);
+                                    return vertx.rxDeployVerticle(new JsonRpcProxyVerticle(cfg,
+                                            proxiedReqHandlersChain));
+                                })
+                                .toList();
+                    });
                 })
                 .subscribe(depIds -> {
                     verticleIds = depIds;
@@ -138,7 +141,8 @@ public class App {
     }
 
     private static List<ReqHandler> buildHandlersChain(Config cfg, WebClient webClient, RedisConnection redis,
-            Cache<String, Long> globalIpRtlmtCache, Cache<String, Long> perMethodIpRtlmtCache) {
+            Cache<String, Long> globalIpRtlmtCache, Cache<String, Long> perMethodIpRtlmtCache,
+            TrackedCallRepository callRepo) {
         var handlers = new ArrayList<ReqHandler>();
         handlers.add(new MetadataPopulatingHandler()); // 1 - populate metadata (e.g. caller's IP)
         if (cfg.getGlobalIpRateLimiting().isEnabled()) {
@@ -148,7 +152,8 @@ public class App {
         if (cfg.getPerMethodIpRateLimiting().isEnabled()) {
             handlers.add(new PerMethodRateLimiter(cfg, perMethodIpRtlmtCache, redis)); // 4 - per-method IP rate limiter
         }
-        handlers.add(new ReqForwardingHandler(cfg, webClient)); // 5 - forward the request to backend and respond
+        handlers.add(new ReqForwardingHandler(cfg, webClient)); // 5 - forward the request to backend
+        handlers.add(new CallTrackingHandler(cfg, callRepo)); // 6 - track the call
         return handlers;
     }
 
@@ -163,6 +168,10 @@ public class App {
 
     private static Redis buildRedisClient(Vertx vertx, Config cfg) {
         return Redis.createClient(vertx);
+    }
+
+    private static TrackedCallRepository buildCallRepo(RedisConnection redis) {
+        return new TrackedCallRepositoryRedisImpl(redis);
     }
 
     private static Cache<String, Long> buildGlobalIpRtlmtCaffeineCache(Config cfg) {

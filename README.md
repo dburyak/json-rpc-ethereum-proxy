@@ -49,8 +49,17 @@ its features.
 
 # Simplifications
 
+## Config
+
 At some point I gave up trying to make everything configurable via env
 variables. So, some values are configurable only via config file.
+
+## Call tracking info persistence
+
+Instead of calling Redis directly, a much better approach would be to abstract
+the storage access behind a repository interface. This way, we could easily
+switch storage backends. It's an easy change, but requires quite a bit of
+boilerplate code, so I decided to skip it for this exercise.
 
 # Design decisions
 
