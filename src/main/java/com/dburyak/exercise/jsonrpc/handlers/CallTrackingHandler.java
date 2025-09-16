@@ -8,24 +8,22 @@ import com.dburyak.exercise.jsonrpc.TrackedCallRepository;
 import io.reactivex.rxjava3.core.Completable;
 import io.reactivex.rxjava3.core.Maybe;
 import io.reactivex.rxjava3.core.Observable;
+import io.reactivex.rxjava3.core.Single;
 import io.reactivex.rxjava3.disposables.Disposable;
 import io.reactivex.rxjava3.subjects.Subject;
 import io.reactivex.rxjava3.subjects.UnicastSubject;
-import io.vertx.rxjava3.redis.client.RedisConnection;
 import lombok.Value;
 import lombok.extern.log4j.Log4j2;
 
 import java.time.Duration;
-import java.util.stream.Collectors;
 
 import static io.netty.handler.codec.http.HttpResponseStatus.OK;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
+import static java.util.stream.Collectors.groupingBy;
 
 @Log4j2
 public class CallTrackingHandler implements ReqHandler {
-    public static final String DELIMITER = ":";
-    public static final String PREFIX = "trck" + DELIMITER;
-    private static final Duration REDIS_BATCH_INTERVAL = Duration.ofSeconds(1); // this could be configurable
+    private static final Duration BATCH_SAVE_INTERVAL = Duration.ofSeconds(1); // this could be configurable
     private final TrackedCallRepository repo;
     private final Duration gracefulShutdownTimeout;
     private final Subject<Call> calls = UnicastSubject.create();
@@ -82,25 +80,30 @@ public class CallTrackingHandler implements ReqHandler {
 
     private void startCallsPersistenceHandler() {
         log.debug("starting calls persistence handler");
-        // NOTE: we better use repository interface here instead of direct Redis calls
-        persistenceSubscription = calls.buffer(REDIS_BATCH_INTERVAL.toMillis(), MILLISECONDS)
+        persistenceSubscription = calls.buffer(BATCH_SAVE_INTERVAL.toMillis(), MILLISECONDS)
                 .filter(c -> !c.isEmpty())
                 .flatMapSingle(callsBatch -> {
-                    var byIp = callsBatch.stream().collect(Collectors.groupingBy(TrackedCall::getIp));
-                    var requests = byIp.entrySet().stream().map(e -> {
-                        var ip = e.getKey();
+                    var byIpAndMethod = callsBatch.stream()
+                            .collect(groupingBy(Call::getIp, groupingBy(Call::getMethod)));
+                    var callChanges = byIpAndMethod.entrySet().stream().flatMap(eIp -> {
+                        var ip = eIp.getKey();
+                        return eIp.getValue().entrySet().stream().map(eMtd -> {
+                            var method = eMtd.getKey();
+                            var successfulCnt = eMtd.getValue().stream().filter(Call::isSuccessful).count();
+                            var failedCnt = eMtd.getValue().size() - successfulCnt;
+                            return new TrackedCall.Change(ip, method, successfulCnt, failedCnt);
+                        });
                     }).toList();
-
-
-                    return null;
+                    return repo.increment(callChanges)
+                            .andThen(Single.just(callsBatch));
                 })
-                .subscribe((it) -> {
-                    log.debug("calls batch persisted, size={}", it.size());
-                    inFlightRequests -= it.size();
+                .subscribe(callsBatch -> {
+                    log.debug("calls batch persisted, size={}", callsBatch.size());
+                    inFlightRequests -= callsBatch.size();
                 }, err -> {
-                    log.error("failed to persist calls batch", err);
                     // TODO: figure out how to handle this properly with respect to inFlightRequests and graceful
                     //  shutdown
+                    log.error("failed to persist calls batch", err);
                 });
     }
 }
