@@ -5,7 +5,7 @@ jsonrpc:
   gracefulShutdownTimeout: 60s
   globalIpRateLimiting:
     enabled: false
-    requests: 5
+    requests: 10
     timeWindow: 1m
     localCacheSize: 5000
   perMethodIpRateLimiting:
@@ -13,5 +13,5 @@ jsonrpc:
     localCacheSize: 5000
     methods:
       eth_blockNumber:
-        requests: 100
+        requests: 5
         timeWindow: 1m
