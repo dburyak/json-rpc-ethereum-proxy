@@ -27,7 +27,9 @@ public class Config {
             PORT_ENV,
             API_PATH_ENV,
             PROXIED_BACKEND_URLS_ENV,
-            GRACEFUL_SHUTDOWN_TIMEOUT_ENV
+            GRACEFUL_SHUTDOWN_TIMEOUT_ENV,
+            GLOBAL_IP_RATE_LIMITING_ENABLED_ENV,
+            PER_METHOD_IP_RATE_LIMITING_ENABLED_ENV
     );
 
     private static final String CFG_PREFIX = "jsonrpc";
@@ -61,6 +63,22 @@ public class Config {
         int requests;
         Duration timeWindow;
         int localCacheSize;
+
+        public GlobalIpRateLimiting(boolean enabled, int requests, Duration timeWindow, int localCacheSize) {
+            if (requests <= 0) {
+                throw new IllegalArgumentException("requests must be > 0");
+            }
+            if (timeWindow.isNegative() || timeWindow.isZero()) {
+                throw new IllegalArgumentException("timeWindow must be > 0");
+            }
+            if (localCacheSize <= 0) {
+                throw new IllegalArgumentException("localCacheSize must be > 0");
+            }
+            this.enabled = enabled;
+            this.requests = requests;
+            this.timeWindow = timeWindow;
+            this.localCacheSize = localCacheSize;
+        }
     }
 
     @Value
@@ -69,11 +87,38 @@ public class Config {
         int localCacheSize;
         Map<String, MethodCfg> methodCfgs;
 
+        public PerMethodIpRateLimiting(boolean enabled, int localCacheSize, Map<String, MethodCfg> methodCfgs) {
+            if (localCacheSize <= 0) {
+                throw new IllegalArgumentException("localCacheSize must be > 0");
+            }
+            if (methodCfgs == null || methodCfgs.isEmpty()) {
+                throw new IllegalArgumentException("At least one method configuration must be provided");
+            }
+            this.enabled = enabled;
+            this.localCacheSize = localCacheSize;
+            this.methodCfgs = methodCfgs;
+        }
+
         @Value
         public static class MethodCfg {
             String method;
             int requests;
             Duration timeWindow;
+
+            public MethodCfg(String method, int requests, Duration timeWindow) {
+                if (method == null || method.isEmpty()) {
+                    throw new IllegalArgumentException("method must be provided");
+                }
+                if (requests <= 0) {
+                    throw new IllegalArgumentException("requests must be > 0");
+                }
+                if (timeWindow.isNegative() || timeWindow.isZero()) {
+                    throw new IllegalArgumentException("timeWindow must be > 0");
+                }
+                this.method = method;
+                this.requests = requests;
+                this.timeWindow = timeWindow;
+            }
         }
     }
 
@@ -103,10 +148,11 @@ public class Config {
         this.perMethodIpRateLimiting = parsePerMethodIpRateLmtCfg(cfgRootJson);
     }
 
-    private static PerMethodIpRateLimiting parsePerMethodIpRateLmtCfg(JsonObject cfgProxyJson) {
+    private static PerMethodIpRateLimiting parsePerMethodIpRateLmtCfg(JsonObject cfgRootJson) {
+        var cfgProxyJson = cfgRootJson.getJsonObject(CFG_PREFIX);
         var perMtdIpRtlmtCfgJson = cfgProxyJson != null ? cfgProxyJson.getJsonObject(PER_METHOD_IP_RATE_LIMITING)
                 : null;
-        var enabled = getBoolean(PER_METHOD_IP_RATE_LIMITING_ENABLED_ENV, cfgProxyJson, ENABLED, perMtdIpRtlmtCfgJson,
+        var enabled = getBoolean(PER_METHOD_IP_RATE_LIMITING_ENABLED_ENV, cfgRootJson, ENABLED, perMtdIpRtlmtCfgJson,
                 () -> false);
         var localCacheSize = getInt(null, null, LOCAL_CACHE_SIZE, perMtdIpRtlmtCfgJson, () -> 5_000);
         var methodsCfgJson = perMtdIpRtlmtCfgJson != null ? perMtdIpRtlmtCfgJson.getJsonObject(METHODS) : null;

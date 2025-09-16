@@ -1,6 +1,7 @@
 package com.dburyak.exercise.jsonrpc;
 
 import io.vertx.core.buffer.Buffer;
+import io.vertx.core.json.JsonObject;
 import io.vertx.rxjava3.ext.web.RoutingContext;
 import io.vertx.rxjava3.ext.web.client.HttpResponse;
 import lombok.Data;
@@ -13,6 +14,9 @@ import lombok.Data;
 @Data
 public class ProxiedReqCtx {
     private final RoutingContext incomingReqCtx;
+    private String callersIp;
+    private Buffer incomingReqBodyBuf;
+    private JsonObject incomingReqBodyJson;
     private HttpResponse<Buffer> backendResp;
     private JsonRpcRequest jsonRpcRequest;
 }

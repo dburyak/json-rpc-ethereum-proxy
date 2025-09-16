@@ -4,12 +4,12 @@ jsonrpc:
   apiPath: /
   gracefulShutdownTimeout: 60s
   globalIpRateLimiting:
-    enabled: true
-    requests: 60
+    enabled: false
+    requests: 5
     timeWindow: 1m
     localCacheSize: 5000
   perMethodIpRateLimiting:
-    enabled: true
+    enabled: false
     localCacheSize: 5000
     methods:
       eth_blockNumber:

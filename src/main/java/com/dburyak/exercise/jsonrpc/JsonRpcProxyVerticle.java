@@ -8,6 +8,7 @@ import io.reactivex.rxjava3.core.Single;
 import io.vertx.rxjava3.core.AbstractVerticle;
 import io.vertx.rxjava3.core.http.HttpServer;
 import io.vertx.rxjava3.ext.web.Router;
+import io.vertx.rxjava3.ext.web.handler.BodyHandler;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
 
@@ -48,6 +49,7 @@ public class JsonRpcProxyVerticle extends AbstractVerticle {
 
     private Router buildRouter() {
         var router = Router.router(vertx);
+        router.route(cfg.getApiPath()).handler(BodyHandler.create());
         router.route(cfg.getApiPath()).handler(reqCtx -> {
             var proxiedReqCtx = new ProxiedReqCtx(reqCtx);
             processWithTheChain(proxiedReqCtx)

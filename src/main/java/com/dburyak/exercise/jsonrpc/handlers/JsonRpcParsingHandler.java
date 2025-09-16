@@ -13,16 +13,17 @@ public class JsonRpcParsingHandler implements ReqHandler {
 
     @Override
     public Maybe<ProxiedReqCtx> handle(ProxiedReqCtx reqCtx) {
-        return reqCtx.getIncomingReqCtx().request().rxBody()
-                .map(bodyBuf -> {
-                    var bodyJson = bodyBuf.toJsonObject();
-                    var jsonRpcVersion = bodyJson.getString(JsonRpcRequest.FIELD_VERSION);
-                    if (!JsonRpcRequest.VERSION_2_0.equals(jsonRpcVersion)) {
-                        throw new UnsupportedJsonRpcVersionException(jsonRpcVersion);
-                    }
-                    reqCtx.setJsonRpcRequest(new JsonRpcRequest(bodyBuf.toJsonObject()));
-                    return reqCtx;
-                })
-                .toMaybe();
+        return Maybe.fromSupplier(() -> {
+            var bodyBuf = reqCtx.getIncomingReqCtx().body().buffer();
+            reqCtx.setIncomingReqBodyBuf(bodyBuf);
+            var bodyJson = bodyBuf.toJsonObject();
+            reqCtx.setIncomingReqBodyJson(bodyJson);
+            var jsonRpcVersion = bodyJson.getString(JsonRpcRequest.FIELD_VERSION);
+            if (!JsonRpcRequest.VERSION_2_0.equals(jsonRpcVersion)) {
+                throw new UnsupportedJsonRpcVersionException(jsonRpcVersion);
+            }
+            reqCtx.setJsonRpcRequest(new JsonRpcRequest(bodyBuf.toJsonObject()));
+            return reqCtx;
+        });
     }
 }

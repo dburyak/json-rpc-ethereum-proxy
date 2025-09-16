@@ -7,15 +7,18 @@ import io.reactivex.rxjava3.core.Maybe;
 import io.vertx.core.http.RequestOptions;
 import io.vertx.rxjava3.ext.web.client.HttpRequest;
 import io.vertx.rxjava3.ext.web.client.WebClient;
+import lombok.extern.log4j.Log4j2;
 
 import java.util.List;
+
+import static com.dburyak.exercise.jsonrpc.handlers.MetadataPopulatingHandler.X_FORWARDED_FOR_HEADER;
 
 /**
  * This is the main handler for the application - it forwards the incoming request to one of the backends and sends the
  * backend response back to the client.
  */
+@Log4j2
 public class ReqForwardingHandler implements ReqHandler {
-    private static final String X_FORWARDED_FOR_HEADER = "x-forwarded-for";
     private static final String HOST_HEADER = "host";
     private static final String CONNECTION_HEADER = "connection";
 
@@ -40,16 +43,13 @@ public class ReqForwardingHandler implements ReqHandler {
         // Even though we've already parsed the incoming request body as Json, no need to re-encode it again. We can
         // just forward the original buffer as-is. This will work as long as we don't have any requirements around
         // modifying the request body.
-        return pReqCtx.getIncomingReqCtx().request().rxBody()
-                .flatMap(inBodyBuf -> {
-                    var reqOpts = nextReqOpts();
-                    var pReq = webClient.request(pReqCtx.getIncomingReqCtx().request().method(), reqOpts);
-                    pReq = populateHeaders(pReq, pReqCtx, reqOpts);
-                    return pReq.rxSendBuffer(inBodyBuf)
-                            .map(backendResp -> {
-                                pReqCtx.setBackendResp(backendResp);
-                                return pReqCtx;
-                            });
+        var reqOpts = nextReqOpts();
+        var pReq = webClient.request(pReqCtx.getIncomingReqCtx().request().method(), reqOpts);
+        pReq = populateHeaders(pReq, pReqCtx, reqOpts);
+        return pReq.rxSendBuffer(pReqCtx.getIncomingReqBodyBuf())
+                .map(backendResp -> {
+                    pReqCtx.setBackendResp(backendResp);
+                    return pReqCtx;
                 })
                 .toMaybe();
     }
@@ -65,7 +65,7 @@ public class ReqForwardingHandler implements ReqHandler {
         pReq.putHeader(CONNECTION_HEADER, "keep-alive");
         var ipInHeader = pReqCtx.getIncomingReqCtx().request().getHeader(X_FORWARDED_FOR_HEADER);
         if (ipInHeader == null) {
-            pReq.putHeader(X_FORWARDED_FOR_HEADER, pReqCtx.getIncomingReqCtx().request().remoteAddress().host());
+            pReq.putHeader(X_FORWARDED_FOR_HEADER, pReqCtx.getCallersIp());
         }
         return pReq;
     }

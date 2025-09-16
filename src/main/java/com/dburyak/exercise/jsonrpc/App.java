@@ -1,6 +1,8 @@
 package com.dburyak.exercise.jsonrpc;
 
+import com.dburyak.exercise.jsonrpc.handlers.GlobalIpRateLimiter;
 import com.dburyak.exercise.jsonrpc.handlers.JsonRpcParsingHandler;
+import com.dburyak.exercise.jsonrpc.handlers.MetadataPopulatingHandler;
 import com.dburyak.exercise.jsonrpc.handlers.ReqForwardingHandler;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
@@ -23,6 +25,7 @@ import lombok.extern.log4j.Log4j2;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -53,13 +56,14 @@ public class App {
                     httpClient = buildHttpClient(vertx);
                     var webClient = buildWebClient(httpClient);
                     var redisClient = buildRedisClient(vertx, cfg);
-                    var globalIpRtlmtCache = buildCaffeineCache(1_000, Duration.ofMinutes(10));
+                    var globalIpRtlmtCache = buildGlobalIpRtlmtCaffeineCache(cfg);
                     return redisClient.rxConnect().flatMap(redis ->
                             Observable.range(0, cfg.getNumVerticles())
                                     .flatMapSingle(i -> {
                                         // request handlers may be stateful, so we create a separate instance for each
                                         // verticle
-                                        var proxiedReqHandlersChain = buildHandlersChain(cfg, webClient, redis);
+                                        var proxiedReqHandlersChain = buildHandlersChain(cfg, webClient,
+                                                redis, globalIpRtlmtCache);
                                         return vertx.rxDeployVerticle(new JsonRpcProxyVerticle(cfg,
                                                 proxiedReqHandlersChain));
                                     })
@@ -131,11 +135,19 @@ public class App {
         );
     }
 
-    private static List<ReqHandler> buildHandlersChain(Config cfg, WebClient webClient, RedisConnection redis) {
-        return List.of(
-                new JsonRpcParsingHandler(),
-                new ReqForwardingHandler(cfg, webClient)
-        );
+    private static List<ReqHandler> buildHandlersChain(Config cfg, WebClient webClient, RedisConnection redis,
+            Cache<String, Long> globalIpRtlmtCache) {
+        var handlers = new ArrayList<ReqHandler>();
+        handlers.add(new MetadataPopulatingHandler()); // 1 - populate metadata (e.g. caller's IP)
+        if (cfg.getGlobalIpRateLimiting().isEnabled()) {
+            log.debug("global IP rate limiting is enabled");
+            handlers.add(new GlobalIpRateLimiter(cfg, globalIpRtlmtCache, redis)); // 2 - global IP rate limiting
+        } else {
+            log.debug("global IP rate limiting is disabled");
+        }
+        handlers.add(new JsonRpcParsingHandler()); // 3 - parse and validate JSON-RPC request
+        handlers.add(new ReqForwardingHandler(cfg, webClient)); // 4 - forward the request to backend and respond
+        return handlers;
     }
 
     private static HttpClient buildHttpClient(Vertx vertx) {
@@ -151,11 +163,12 @@ public class App {
         return Redis.createClient(vertx);
     }
 
-    private static <V> Cache<String, V> buildCaffeineCache(int maxSize, Duration ttl) {
-        var builder = Caffeine.newBuilder().maximumSize(maxSize);
-        if (ttl != null) {
-            builder.expireAfterAccess(ttl);
+    private static Cache<String, Long> buildGlobalIpRtlmtCaffeineCache(Config cfg) {
+        if (!cfg.getGlobalIpRateLimiting().isEnabled()) {
+            return null;
         }
-        return builder.build();
+        return Caffeine.newBuilder()
+                .maximumSize(cfg.getGlobalIpRateLimiting().getLocalCacheSize())
+                .build();
     }
 }
