@@ -60,12 +60,22 @@ its features.
 At some point I gave up trying to make everything configurable via env
 variables. So, some values are configurable only via config file.
 
+When more and more code was added I started to having regrets about not using
+Micronaut DI for this exercise. It would make both configuration and factories
+with components lifecycle much easier.
+
 ## Call tracking info persistence
 
 Instead of calling Redis directly, a much better approach would be to abstract
 the storage access behind a repository interface. This way, we could easily
 switch storage backends. It's an easy change, but requires quite a bit of
 boilerplate code, so I decided to skip it for this exercise.
+
+## Scripts root directory
+
+For scripts simplicity, I've assumed that the working directory is always the
+root directory of the project. They won't work correctly if run from some other
+directory.
 
 # Design decisions
 
@@ -170,4 +180,40 @@ easy to make the chain configurable to be able to enable/disable certain
 features. Another benefit of this approach is that each processor can be tested
 in isolation.
 
-# Running locally
+# Running
+
+Requirements:
+ - java 21
+ - Redis
+
+To build the app and generate startup scripts:
+```
+./gradlew :install
+```
+
+## Redis in container
+
+Installing and running Redis with default options will work just fine and is
+a better way as it's easier to examine redis state with redis-cli.
+
+To run Redis in a docker container:
+```
+# for the first time:
+docker run -d --name redis -p 6379:6379 redis:latest
+# or if you already have a container:
+docker container start redis
+```
+
+## Docker image
+
+To build the docker image:
+```
+./scripts/build-docker-image.sh
+```
+
+To run both the app and Redis in docker containers:
+```
+./scripts/build-docker-image.sh
+export JSONRPC_PROXIED_BACKEND_URLS="<ETH_URL1>,<ETH_URL2>,..."
+docker compose up
+```

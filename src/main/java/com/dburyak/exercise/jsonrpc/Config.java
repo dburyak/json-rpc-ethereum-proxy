@@ -26,6 +26,7 @@ public class Config {
     public static final String TLS_ENABLED_ENV = CFG_PREFIX_ENV + "TLS_ENABLED";
     public static final String TLS_P12_PATH_ENV = CFG_PREFIX_ENV + "TLS_P12_PATH";
     public static final String TLS_P12_PASSWORD_ENV = CFG_PREFIX_ENV + "TLS_P12_PASSWORD";
+    public static final String REDIS_URI_ENV = CFG_PREFIX_ENV + "REDIS_URI";
     public static final List<String> ALL_ENV_VARS = List.of(
             NUM_VERTICLES_ENV,
             PORT_ENV,
@@ -37,7 +38,8 @@ public class Config {
             ACCESS_LOG_ENABLED_ENV,
             TLS_ENABLED_ENV,
             TLS_P12_PATH_ENV,
-            TLS_P12_PASSWORD_ENV
+            TLS_P12_PASSWORD_ENV,
+            REDIS_URI_ENV
     );
 
     private static final String CFG_PREFIX = "jsonrpc";
@@ -58,6 +60,7 @@ public class Config {
     private static final String CALL_TRACKING_API_PATH = "callTrackingApiPath";
     private static final String ACCESS_LOG_ENABLED = "accessLogEnabled";
     private static final String TLS_ENABLED = "tlsEnabled";
+    private static final String REDIS_URI = "redisUri";
 
 
     int numVerticles;
@@ -72,6 +75,7 @@ public class Config {
     boolean tlsEnabled;
     String tlsP12Path;
     String tlsP12Password;
+    String redisUri;
 
     public Config(JsonObject cfgRootJson) {
         var cfgProxyJson = cfgRootJson.getJsonObject(CFG_PREFIX);
@@ -111,6 +115,7 @@ public class Config {
         }
         this.tlsP12Path = tlsP12Path;
         this.tlsP12Password = tlsP12Password;
+        this.redisUri = getString(REDIS_URI_ENV, cfgRootJson, REDIS_URI, cfgProxyJson, () -> "redis://localhost:6379");
     }
 
     @Value

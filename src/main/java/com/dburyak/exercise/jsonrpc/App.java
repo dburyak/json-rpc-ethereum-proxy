@@ -175,7 +175,8 @@ public class App {
     }
 
     private static Redis buildRedisClient(Vertx vertx, Config cfg) {
-        return Redis.createClient(vertx);
+        log.debug("using redis uri: {}", cfg.getRedisUri());
+        return Redis.createClient(vertx, cfg.getRedisUri());
     }
 
     private static TrackedCallRepository buildCallRepo(RedisConnection redis) {

@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  app:
+    image: json-rpc-ethereum-proxy:latest
+    environment:
+      JSONRPC_REDIS_URI: redis://redis:6379
+      JSONRPC_PROXIED_BACKEND_URLS: ${JSONRPC_PROXIED_BACKEND_URLS}
+      # TODO: add other env vars that Config reads from
+    depends_on:
+      - redis
+    networks:
+      - appnet
+    ports:
+      - "8080:8080"
+
+  redis:
+    image: redis:latest
+    networks:
+      - appnet
+
+networks:
+  appnet:
+    driver: bridge

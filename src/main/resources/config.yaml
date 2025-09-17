@@ -6,6 +6,7 @@ jsonrpc:
   callTrackingApiPath: /call-tracking
   accessLogEnabled: true
   tlsEnabled: false
+  redisUri: redis://localhost:6379
   globalIpRateLimiting:
     enabled: false # disabled by default, should be enabled via env var if needed
     requests: 60
