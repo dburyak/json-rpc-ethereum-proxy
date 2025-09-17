@@ -98,7 +98,6 @@ public class CallTrackingHandler implements ReqHandler {
                             .andThen(Single.just(callsBatch));
                 })
                 .subscribe(callsBatch -> {
-                    log.debug("calls batch persisted, size={}", callsBatch.size());
                     inFlightRequests -= callsBatch.size();
                 }, err -> {
                     // TODO: figure out how to handle this properly with respect to inFlightRequests and graceful

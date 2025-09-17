@@ -22,6 +22,7 @@ public class Config {
     public static final String GLOBAL_IP_RATE_LIMITING_ENABLED_ENV = CFG_PREFIX_ENV + "GLOBAL_IP_RATE_LIMITING_ENABLED";
     public static final String PER_METHOD_IP_RATE_LIMITING_ENABLED_ENV =
             CFG_PREFIX_ENV + "PER_METHOD_IP_RATE_LIMITING_ENABLED";
+    public static final String ACCESS_LOG_ENABLED_ENV = CFG_PREFIX_ENV + "ACCESS_LOG_ENABLED";
     public static final List<String> ALL_ENV_VARS = List.of(
             NUM_VERTICLES_ENV,
             PORT_ENV,
@@ -29,7 +30,8 @@ public class Config {
             PROXIED_BACKEND_URLS_ENV,
             GRACEFUL_SHUTDOWN_TIMEOUT_ENV,
             GLOBAL_IP_RATE_LIMITING_ENABLED_ENV,
-            PER_METHOD_IP_RATE_LIMITING_ENABLED_ENV
+            PER_METHOD_IP_RATE_LIMITING_ENABLED_ENV,
+            ACCESS_LOG_ENABLED_ENV
     );
 
     private static final String CFG_PREFIX = "jsonrpc";
@@ -48,6 +50,7 @@ public class Config {
     private static final String LOCAL_CACHE_SIZE = "localCacheSize";
     private static final String METHODS = "methods";
     private static final String CALL_TRACKING_API_PATH = "callTrackingApiPath";
+    private static final String ACCESS_LOG_ENABLED = "accessLogEnabled";
 
 
     int numVerticles;
@@ -58,6 +61,37 @@ public class Config {
     GlobalIpRateLimiting globalIpRateLimiting;
     PerMethodIpRateLimiting perMethodIpRateLimiting;
     String callTrackingApiPath;
+    boolean accessLogEnabled;
+
+    public Config(JsonObject cfgRootJson) {
+        var cfgProxyJson = cfgRootJson.getJsonObject(CFG_PREFIX);
+        this.numVerticles = getInt(NUM_VERTICLES_ENV, cfgRootJson, NUM_VERTICLES, cfgProxyJson,
+                () -> Runtime.getRuntime().availableProcessors());
+        this.port = getInt(PORT_ENV, cfgRootJson, PORT, cfgProxyJson, () -> PORT_DEFAULT);
+        this.apiPath = getString(API_PATH_ENV, cfgRootJson, API_PATH, cfgProxyJson, () -> API_PATH_DEFAULT);
+        var proxiedBackendUrls = getStringList(PROXIED_BACKEND_URLS_ENV, cfgRootJson, null, null);
+        if (proxiedBackendUrls == null || proxiedBackendUrls.isEmpty()) {
+            throw new IllegalArgumentException("At least one proxied backend URL must be provided via env var "
+                    + PROXIED_BACKEND_URLS_ENV);
+        }
+        this.proxiedBackendUrls = proxiedBackendUrls;
+        var gracefulShutdownTimeoutStr = getString(GRACEFUL_SHUTDOWN_TIMEOUT_ENV, cfgRootJson,
+                GRACEFUL_SHUTDOWN_TIMEOUT, cfgProxyJson, () -> GRACEFUL_SHUTDOWN_TIMEOUT_DEFAULT_STR);
+        this.gracefulShutdownTimeout = parseDuration(gracefulShutdownTimeoutStr);
+        var globalIpRateLmtlCfgJson = cfgProxyJson != null ? cfgProxyJson.getJsonObject(GLOBAL_IP_RATE_LIMITING) : null;
+        this.globalIpRateLimiting = new GlobalIpRateLimiting(
+                getBoolean(GLOBAL_IP_RATE_LIMITING_ENABLED_ENV, cfgRootJson, ENABLED, globalIpRateLmtlCfgJson,
+                        () -> false),
+                getInt(null, null, REQUESTS, globalIpRateLmtlCfgJson, () -> 5_000),
+                parseDuration(getString(null, null, TIME_WINDOW, globalIpRateLmtlCfgJson, () -> "1m")),
+                getInt(null, null, LOCAL_CACHE_SIZE, globalIpRateLmtlCfgJson, () -> 5_000)
+        );
+        this.perMethodIpRateLimiting = parsePerMethodIpRateLmtCfg(cfgRootJson);
+        this.callTrackingApiPath = getString(null, null, CALL_TRACKING_API_PATH, cfgProxyJson,
+                () -> "/call-tracking");
+        this.accessLogEnabled = getBoolean(ACCESS_LOG_ENABLED_ENV, cfgRootJson, ACCESS_LOG_ENABLED, cfgProxyJson,
+                () -> true);
+    }
 
     @Value
     public static class GlobalIpRateLimiting {
@@ -122,34 +156,6 @@ public class Config {
                 this.timeWindow = timeWindow;
             }
         }
-    }
-
-    public Config(JsonObject cfgRootJson) {
-        var cfgProxyJson = cfgRootJson.getJsonObject(CFG_PREFIX);
-        this.numVerticles = getInt(NUM_VERTICLES_ENV, cfgRootJson, NUM_VERTICLES, cfgProxyJson,
-                () -> Runtime.getRuntime().availableProcessors());
-        this.port = getInt(PORT_ENV, cfgRootJson, PORT, cfgProxyJson, () -> PORT_DEFAULT);
-        this.apiPath = getString(API_PATH_ENV, cfgRootJson, API_PATH, cfgProxyJson, () -> API_PATH_DEFAULT);
-        var proxiedBackendUrls = getStringList(PROXIED_BACKEND_URLS_ENV, cfgRootJson, null, null);
-        if (proxiedBackendUrls == null || proxiedBackendUrls.isEmpty()) {
-            throw new IllegalArgumentException("At least one proxied backend URL must be provided via env var "
-                    + PROXIED_BACKEND_URLS_ENV);
-        }
-        this.proxiedBackendUrls = proxiedBackendUrls;
-        var gracefulShutdownTimeoutStr = getString(GRACEFUL_SHUTDOWN_TIMEOUT_ENV, cfgRootJson,
-                GRACEFUL_SHUTDOWN_TIMEOUT, cfgProxyJson, () -> GRACEFUL_SHUTDOWN_TIMEOUT_DEFAULT_STR);
-        this.gracefulShutdownTimeout = parseDuration(gracefulShutdownTimeoutStr);
-        var globalIpRateLmtlCfgJson = cfgProxyJson != null ? cfgProxyJson.getJsonObject(GLOBAL_IP_RATE_LIMITING) : null;
-        this.globalIpRateLimiting = new GlobalIpRateLimiting(
-                getBoolean(GLOBAL_IP_RATE_LIMITING_ENABLED_ENV, cfgRootJson, ENABLED, globalIpRateLmtlCfgJson,
-                        () -> false),
-                getInt(null, null, REQUESTS, globalIpRateLmtlCfgJson, () -> 5_000),
-                parseDuration(getString(null, null, TIME_WINDOW, globalIpRateLmtlCfgJson, () -> "1m")),
-                getInt(null, null, LOCAL_CACHE_SIZE, globalIpRateLmtlCfgJson, () -> 5_000)
-        );
-        this.perMethodIpRateLimiting = parsePerMethodIpRateLmtCfg(cfgRootJson);
-        this.callTrackingApiPath = getString(null, null, CALL_TRACKING_API_PATH, cfgProxyJson,
-                () -> "/call-tracking");
     }
 
     private static PerMethodIpRateLimiting parsePerMethodIpRateLmtCfg(JsonObject cfgRootJson) {

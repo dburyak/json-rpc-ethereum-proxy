@@ -12,7 +12,7 @@ configuration:
 
       # access log appender config
       - name: appender.access-log.enabled
-        value: ${env:LOG_APPENDER_ACCESS_LOG_ENABLED:-false}
+        value: "true"
       - name: appender.access-log.directory
         value: ${env:LOG_APPENDER_ACCESS_LOG_DIRECTORY:-log/access}
       - name: appender.access-log.file-name
@@ -42,7 +42,7 @@ configuration:
         fileName: ${appender.access-log.directory}/${appender.access-log.file-name}
         filePattern: ${appender.access-log.directory}/${appender.access-log.file-name-pattern}
         patternLayout:
-          pattern: "%d{ISO8601} - %msg%n%throwable"
+          pattern: "%msg%n"
         DefaultRolloverStrategy:
           fileIndex: nomax
           delete:

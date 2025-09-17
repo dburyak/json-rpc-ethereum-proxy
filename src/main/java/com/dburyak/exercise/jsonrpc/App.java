@@ -1,5 +1,6 @@
 package com.dburyak.exercise.jsonrpc;
 
+import com.dburyak.exercise.jsonrpc.handlers.AccessLoggingHandler;
 import com.dburyak.exercise.jsonrpc.handlers.CallTrackingHandler;
 import com.dburyak.exercise.jsonrpc.handlers.GlobalIpRateLimiter;
 import com.dburyak.exercise.jsonrpc.handlers.JsonRpcParsingHandler;
@@ -156,6 +157,11 @@ public class App {
         }
         handlers.add(new ReqForwardingHandler(cfg, webClient)); // 5 - forward the request to backend
         handlers.add(new CallTrackingHandler(cfg, callRepo)); // 6 - track the call
+        if (cfg.isAccessLogEnabled()) {
+            // NOTE: depending on what information should be captured in the access log, we can place this handler
+            // in different places in the chain.
+            handlers.add(new AccessLoggingHandler(cfg)); // 7 - access logging
+        }
         return handlers;
     }
 

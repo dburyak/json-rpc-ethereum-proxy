@@ -4,6 +4,7 @@ jsonrpc:
   apiPath: /
   gracefulShutdownTimeout: 60s
   callTrackingApiPath: /call-tracking
+  accessLogEnabled: true
   globalIpRateLimiting:
     enabled: false # disabled by default, should be enabled via env var if needed
     requests: 60
