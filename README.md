@@ -30,7 +30,13 @@ its features.
 
 * TLS termination is implemented but disabled by default. This is in order to
   make it easier to run it anywhere out of the box, without having to deal with
-  certificates.
+  certificates. To use TLS, you'll need to provide three env vars:
+    - `JSONRPC_TLS_ENABLED` - set to `true` to enable TLS
+    - `JSONRPC_TLS_P12_PATH` - path to p12 file
+    - `JSONRPC_TLS_P12_PASSWORD` - password for the p12 cert
+
+  Only p12 format is supported for simplicity. To generate a self-signed cert in
+  p12 format for running on localhost, you can use the bash script in `scripts`.
 
 * Rate limiting by IP. There will be two rate limiters - one global for all
   requests, and another more fine-grained one for each unique JSON-RPC method.
