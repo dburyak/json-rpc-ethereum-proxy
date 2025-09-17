@@ -73,11 +73,11 @@ public class TrackedCallRepositoryRedisImpl implements TrackedCallRepository {
                 .arg(successField)
                 .arg(failureField);
         return redis.rxSend(req).flatMap(resp -> {
-            if (resp == null || resp.size() == 0) {
-                return Maybe.empty();
-            }
             var successfulCallsResp = resp.get(0);
             var failedCallsResp = resp.get(1);
+            if (successfulCallsResp == null && failedCallsResp == null) {
+                return Maybe.empty();
+            }
             var successfulCalls = (successfulCallsResp != null) ? successfulCallsResp.toLong() : 0;
             var failedCalls = (failedCallsResp != null) ? failedCallsResp.toLong() : 0;
             return Maybe.just(new TrackedCall(ip, method, successfulCalls, failedCalls));
