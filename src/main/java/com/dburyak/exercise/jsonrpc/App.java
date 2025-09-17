@@ -6,6 +6,8 @@ import com.dburyak.exercise.jsonrpc.handlers.JsonRpcParsingHandler;
 import com.dburyak.exercise.jsonrpc.handlers.MetadataPopulatingHandler;
 import com.dburyak.exercise.jsonrpc.handlers.PerMethodRateLimiter;
 import com.dburyak.exercise.jsonrpc.handlers.ReqForwardingHandler;
+import com.dburyak.exercise.jsonrpc.repo.TrackedCallRepository;
+import com.dburyak.exercise.jsonrpc.repo.TrackedCallRepositoryRedisImpl;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import io.reactivex.rxjava3.core.Completable;
@@ -68,8 +70,8 @@ public class App {
                                     // verticle
                                     var proxiedReqHandlersChain = buildHandlersChain(cfg, webClient,
                                             redis, globalIpRtlmtCache, perMethodIpRtlmtCache, callRepo);
-                                    return vertx.rxDeployVerticle(new JsonRpcProxyVerticle(cfg,
-                                            proxiedReqHandlersChain));
+                                    return vertx.rxDeployVerticle(new ApiVerticle(cfg,
+                                            proxiedReqHandlersChain, callRepo));
                                 })
                                 .toList();
                     });

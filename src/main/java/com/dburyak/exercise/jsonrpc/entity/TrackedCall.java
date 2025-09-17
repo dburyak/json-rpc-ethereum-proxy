@@ -1,5 +1,6 @@
-package com.dburyak.exercise.jsonrpc;
+package com.dburyak.exercise.jsonrpc.entity;
 
+import io.vertx.core.json.JsonObject;
 import lombok.Value;
 
 @Value
@@ -20,5 +21,9 @@ public class TrackedCall {
         String method;
         long successfulCalls;
         long failedCalls;
+    }
+
+    public JsonObject toJson() {
+        return JsonObject.mapFrom(this);
     }
 }

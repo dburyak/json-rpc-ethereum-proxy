@@ -1,10 +1,13 @@
-package com.dburyak.exercise.jsonrpc;
+package com.dburyak.exercise.jsonrpc.repo;
 
-import com.dburyak.exercise.jsonrpc.TrackedCall.Change;
+import com.dburyak.exercise.jsonrpc.entity.CallsOfUser;
+import com.dburyak.exercise.jsonrpc.entity.CallsOfUser.CallStats;
+import com.dburyak.exercise.jsonrpc.entity.TrackedCall;
+import com.dburyak.exercise.jsonrpc.entity.TrackedCall.Change;
 import io.reactivex.rxjava3.core.Completable;
 import io.reactivex.rxjava3.core.Maybe;
 import io.reactivex.rxjava3.core.Observable;
-import io.vertx.redis.client.Request;
+import io.reactivex.rxjava3.core.Single;
 import io.vertx.rxjava3.redis.client.RedisConnection;
 import lombok.RequiredArgsConstructor;
 import lombok.Value;
@@ -16,12 +19,15 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.stream.Stream;
 
+import static io.vertx.redis.client.Command.DEL;
 import static io.vertx.redis.client.Command.HINCRBY;
 import static io.vertx.redis.client.Command.HMGET;
 import static io.vertx.redis.client.Command.HSCAN;
+import static io.vertx.redis.client.Request.cmd;
 import static java.util.Map.entry;
 import static java.util.stream.Collectors.groupingBy;
 import static java.util.stream.Collectors.summingLong;
+import static java.util.stream.Collectors.toMap;
 
 @RequiredArgsConstructor
 public class TrackedCallRepositoryRedisImpl implements TrackedCallRepository {
@@ -44,13 +50,13 @@ public class TrackedCallRepositoryRedisImpl implements TrackedCallRepository {
             var successIncReqs = methodSuccessInc.entrySet().stream()
                     .filter(e -> e.getValue() > 0) // no need to increment by 0
                     .map(e ->
-                            Request.cmd(HINCRBY).arg(redisKey(ip))
+                            cmd(HINCRBY).arg(redisKey(ip))
                                     .arg(redisField(e.getKey(), SUCCESS))
                                     .arg(e.getValue()));
             var failureIncReqs = methodFailureInc.entrySet().stream()
                     .filter(e -> e.getValue() > 0) // no need to increment by 0
                     .map(e ->
-                            Request.cmd(HINCRBY).arg(redisKey(ip))
+                            cmd(HINCRBY).arg(redisKey(ip))
                                     .arg(redisField(e.getKey(), FAILURE))
                                     .arg(e.getValue()));
             return Stream.concat(successIncReqs, failureIncReqs);
@@ -63,7 +69,7 @@ public class TrackedCallRepositoryRedisImpl implements TrackedCallRepository {
     public Maybe<TrackedCall> findByIpAndMethod(String ip, String method) {
         var successField = redisField(method, SUCCESS);
         var failureField = redisField(method, FAILURE);
-        var req = Request.cmd(HMGET).arg(redisKey(ip))
+        var req = cmd(HMGET).arg(redisKey(ip))
                 .arg(successField)
                 .arg(failureField);
         return redis.rxSend(req).flatMap(resp -> {
@@ -79,9 +85,9 @@ public class TrackedCallRepositoryRedisImpl implements TrackedCallRepository {
     }
 
     @Override
-    public Maybe<List<TrackedCall>> findAllByIp(String ip) {
+    public Maybe<CallsOfUser> findByIp(String ip) {
         return hscan(redisKey(ip), 0L).toList().flatMapMaybe(batches -> {
-            var trackedCalls = batches.stream().flatMap(r -> r.getValues().stream())
+            var callStatsMap = batches.stream().flatMap(r -> r.getValues().stream())
                     .map(e -> {
                         var field = e.getKey();
                         var method = field.substring(0, field.length() - SUCCESS_SUFFIX.length());
@@ -90,7 +96,7 @@ public class TrackedCallRepositoryRedisImpl implements TrackedCallRepository {
                         // wish there were tuples in Java, it's late to add vavr at this point
                         return entry(method, isSuccess ? entry(SUCCESS, count) : entry(FAILURE, count));
                     })
-                    .collect(groupingBy(Entry::getKey))
+                    .collect(groupingBy(Entry::getKey)) // by method
                     .entrySet().stream().map(e -> {
                         var method = e.getKey();
                         var successfulCalls = e.getValue().stream()
@@ -103,19 +109,27 @@ public class TrackedCallRepositoryRedisImpl implements TrackedCallRepository {
                                 .map(t -> t.getValue().getValue()).orElse(0L);
                         return new TrackedCall(ip, method, successfulCalls, failedCalls);
                     })
-                    .toList();
-            return trackedCalls.isEmpty() ? Maybe.empty() : Maybe.just(trackedCalls);
+                    .collect(toMap(TrackedCall::getMethod,
+                            c -> new CallStats(c.getSuccessfulCalls(), c.getFailedCalls())));
+            return callStatsMap.isEmpty() ? Maybe.empty() : Maybe.just(new CallsOfUser(ip, callStatsMap));
         });
     }
 
+    @Override
+    public Single<Boolean> deleteByIp(String ip) {
+        var delReq = cmd(DEL).arg(redisKey(ip));
+        return redis.rxSend(delReq).toSingle()
+                .map(resp -> resp.toInteger() > 0);
+    }
+
     private Observable<HScanResult> hscan(String key, long cursor) {
-        var req = Request.cmd(HSCAN).arg(key).arg(cursor);
+        var req = cmd(HSCAN).arg(key).arg(cursor);
         return redis.rxSend(req).flatMapObservable(resp -> {
             var nextCursor = resp.get(0).toLong();
             var entries = resp.get(1);
             var values = new ArrayList<Map.Entry<String, Long>>(entries.size() / 2);
-            for (var e : entries) {
-                values.add(entry(e.get(0).toString(), e.get(1).toLong()));
+            for (var method : entries.getKeys()) {
+                values.add(entry(method, entries.get(method).toLong()));
             }
             var scanResult = Observable.just(new HScanResult(nextCursor, values));
             return (nextCursor == 0L) ? scanResult : hscan(key, nextCursor).startWith(scanResult);

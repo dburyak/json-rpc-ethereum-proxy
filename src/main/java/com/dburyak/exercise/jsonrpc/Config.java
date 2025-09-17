@@ -47,6 +47,7 @@ public class Config {
     private static final String TIME_WINDOW = "timeWindow";
     private static final String LOCAL_CACHE_SIZE = "localCacheSize";
     private static final String METHODS = "methods";
+    private static final String CALL_TRACKING_API_PATH = "callTrackingApiPath";
 
 
     int numVerticles;
@@ -56,6 +57,7 @@ public class Config {
     Duration gracefulShutdownTimeout;
     GlobalIpRateLimiting globalIpRateLimiting;
     PerMethodIpRateLimiting perMethodIpRateLimiting;
+    String callTrackingApiPath;
 
     @Value
     public static class GlobalIpRateLimiting {
@@ -146,6 +148,8 @@ public class Config {
                 getInt(null, null, LOCAL_CACHE_SIZE, globalIpRateLmtlCfgJson, () -> 5_000)
         );
         this.perMethodIpRateLimiting = parsePerMethodIpRateLmtCfg(cfgRootJson);
+        this.callTrackingApiPath = getString(null, null, CALL_TRACKING_API_PATH, cfgProxyJson,
+                () -> "/call-tracking");
     }
 
     private static PerMethodIpRateLimiting parsePerMethodIpRateLmtCfg(JsonObject cfgRootJson) {

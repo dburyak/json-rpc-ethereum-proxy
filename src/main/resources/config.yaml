@@ -3,6 +3,7 @@ jsonrpc:
   port: 8080
   apiPath: /
   gracefulShutdownTimeout: 60s
+  callTrackingApiPath: /call-tracking
   globalIpRateLimiting:
     enabled: false # disabled by default, should be enabled via env var if needed
     requests: 60
