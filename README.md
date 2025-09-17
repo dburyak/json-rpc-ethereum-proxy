@@ -55,6 +55,17 @@ its features.
 
 # Simplifications
 
+## Bulk requests are NOT supported
+
+At the very end I've checked sample requests and realized that JSON-RPC supports
+bulk requests, which I totally forgot about. At this stage it will be too much
+work, though the changes needed are pretty straightforward. In the
+`JsonRpcParsingHandler` we should detect whether it's a JsonArray or a
+JsonObject and parse accordingly. `ProxiedReqCtx` would need to hold a list of
+requests instead of a single request. And each handler's processing code should
+be modified to iterate over the list of requests. With all the code in place for
+individual request handling, it should be a straightforward change.
+
 ## Config
 
 At some point I gave up trying to make everything configurable via env
@@ -183,20 +194,23 @@ in isolation.
 # Running
 
 Requirements:
- - java 21
- - Redis
+
+- java 21
+- Redis
 
 To build the app and generate startup scripts:
+
 ```
 ./gradlew :install
 ```
 
 ## Redis in container
 
-Installing and running Redis with default options will work just fine and is
-a better way as it's easier to examine redis state with redis-cli.
+Installing and running Redis with default options will work just fine and is a
+better way as it's easier to examine redis state with redis-cli.
 
 To run Redis in a docker container:
+
 ```
 # for the first time:
 docker run -d --name redis -p 6379:6379 redis:latest
@@ -207,11 +221,13 @@ docker container start redis
 ## Docker image
 
 To build the docker image:
+
 ```
 ./scripts/build-docker-image.sh
 ```
 
 To run both the app and Redis in docker containers:
+
 ```
 ./scripts/build-docker-image.sh
 export JSONRPC_PROXIED_BACKEND_URLS="<ETH_URL1>,<ETH_URL2>,..."
