@@ -7,6 +7,8 @@ import io.reactivex.rxjava3.core.Completable;
 import io.reactivex.rxjava3.core.Maybe;
 import io.reactivex.rxjava3.core.Observable;
 import io.reactivex.rxjava3.core.Single;
+import io.vertx.core.http.HttpServerOptions;
+import io.vertx.core.net.PfxOptions;
 import io.vertx.rxjava3.core.AbstractVerticle;
 import io.vertx.rxjava3.core.http.HttpServer;
 import io.vertx.rxjava3.ext.web.Router;
@@ -36,7 +38,7 @@ public class ApiVerticle extends AbstractVerticle {
     public Completable rxStart() {
         return Single.fromSupplier(this::buildRouter)
                 .flatMap(router -> {
-                    httpServer = vertx.createHttpServer();
+                    httpServer = buildHttpServer();
                     return httpServer
                             .requestHandler(router)
                             .rxListen(cfg.getPort())
@@ -53,6 +55,18 @@ public class ApiVerticle extends AbstractVerticle {
                 .andThen(Observable.fromIterable(handlers))
                 .flatMapCompletable(AsyncCloseable::closeAsync)
                 .doOnComplete(() -> log.info("verticle stopped: verticleId={}", deploymentID()));
+    }
+
+    private HttpServer buildHttpServer() {
+        if (!cfg.isTlsEnabled()) {
+            return vertx.createHttpServer();
+        }
+        var opts = new HttpServerOptions()
+                .setSsl(true)
+                .setKeyCertOptions(new PfxOptions()
+                        .setPath(cfg.getTlsP12Path())
+                        .setPassword(cfg.getTlsP12Password()));
+        return vertx.createHttpServer(opts);
     }
 
     private Router buildRouter() {

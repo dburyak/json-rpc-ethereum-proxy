@@ -23,6 +23,9 @@ public class Config {
     public static final String PER_METHOD_IP_RATE_LIMITING_ENABLED_ENV =
             CFG_PREFIX_ENV + "PER_METHOD_IP_RATE_LIMITING_ENABLED";
     public static final String ACCESS_LOG_ENABLED_ENV = CFG_PREFIX_ENV + "ACCESS_LOG_ENABLED";
+    public static final String TLS_ENABLED_ENV = CFG_PREFIX_ENV + "TLS_ENABLED";
+    public static final String TLS_P12_PATH_ENV = CFG_PREFIX_ENV + "TLS_P12_PATH";
+    public static final String TLS_P12_PASSWORD_ENV = CFG_PREFIX_ENV + "TLS_P12_PASSWORD";
     public static final List<String> ALL_ENV_VARS = List.of(
             NUM_VERTICLES_ENV,
             PORT_ENV,
@@ -31,7 +34,10 @@ public class Config {
             GRACEFUL_SHUTDOWN_TIMEOUT_ENV,
             GLOBAL_IP_RATE_LIMITING_ENABLED_ENV,
             PER_METHOD_IP_RATE_LIMITING_ENABLED_ENV,
-            ACCESS_LOG_ENABLED_ENV
+            ACCESS_LOG_ENABLED_ENV,
+            TLS_ENABLED_ENV,
+            TLS_P12_PATH_ENV,
+            TLS_P12_PASSWORD_ENV
     );
 
     private static final String CFG_PREFIX = "jsonrpc";
@@ -51,6 +57,7 @@ public class Config {
     private static final String METHODS = "methods";
     private static final String CALL_TRACKING_API_PATH = "callTrackingApiPath";
     private static final String ACCESS_LOG_ENABLED = "accessLogEnabled";
+    private static final String TLS_ENABLED = "tlsEnabled";
 
 
     int numVerticles;
@@ -62,6 +69,9 @@ public class Config {
     PerMethodIpRateLimiting perMethodIpRateLimiting;
     String callTrackingApiPath;
     boolean accessLogEnabled;
+    boolean tlsEnabled;
+    String tlsP12Path;
+    String tlsP12Password;
 
     public Config(JsonObject cfgRootJson) {
         var cfgProxyJson = cfgRootJson.getJsonObject(CFG_PREFIX);
@@ -91,6 +101,16 @@ public class Config {
                 () -> "/call-tracking");
         this.accessLogEnabled = getBoolean(ACCESS_LOG_ENABLED_ENV, cfgRootJson, ACCESS_LOG_ENABLED, cfgProxyJson,
                 () -> true);
+        this.tlsEnabled = getBoolean(TLS_ENABLED_ENV, cfgRootJson, TLS_ENABLED, cfgProxyJson, () -> false);
+        var tlsP12Path = getString(TLS_P12_PATH_ENV, cfgRootJson, null, null, () -> null);
+        var tlsP12Password = getString(TLS_P12_PASSWORD_ENV, cfgRootJson, null, null, () -> null);
+        if (tlsEnabled && ((tlsP12Path == null || tlsP12Path.isEmpty()) || tlsP12Password == null)) {
+            throw new IllegalArgumentException("TLS p12 path and password must be provided via " +
+                    TLS_P12_PATH_ENV + " and " + TLS_P12_PASSWORD_ENV +
+                    " env vars when TLS is enabled");
+        }
+        this.tlsP12Path = tlsP12Path;
+        this.tlsP12Password = tlsP12Password;
     }
 
     @Value
